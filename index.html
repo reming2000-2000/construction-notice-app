@@ -20,8 +20,8 @@
       </div>
       <button id="sampleButton" class="button subtle" type="button">サンプル入力</button>
       <button id="clearButton" class="button subtle" type="button">入力をクリア</button>
-      <button id="pdfButton" class="button secondary" type="button" disabled>PDF保存・印刷</button>
-      <button id="wordButton" class="button primary" type="button" disabled>Word出力 (.docx)</button>
+      <button id="pdfButton" class="button secondary" type="button" aria-haspopup="dialog" disabled>PDF保存・印刷</button>
+      <button id="wordButton" class="button primary" type="button" aria-haspopup="dialog" disabled>Word出力 (.docx)</button>
     </div>
   </header>
   <div class="shell">
@@ -44,35 +44,69 @@
             <label class="field"><span>開始時刻 <em>必須</em></span><input type="time" data-field="startTime" required /></label>
             <label class="field" data-modeonly="long" hidden><span>終了日 <em>必須</em></span><input type="date" data-field="endDate" required /></label>
             <label class="field"><span>終了時刻 <em>必須</em></span><input type="time" data-field="endTime" required /></label>
-            <label class="field" data-modeonly="long" hidden><span>利用再開日</span><input type="date" data-field="resumeDate" /></label>
-            <label class="field" data-modeonly="long" hidden><span>利用再開時刻</span><input type="time" data-field="resumeTime" /></label>
           </div>
-          <p class="help">曜日は日付から自動計算し、本文と工事期間欄に反映します。</p>
-          <p class="help" data-modeonly="long" hidden>利用再開日と時刻が両方空欄なら、工事終了日時を利用再開予定とします。</p>
-          <p class="help" id="legacyResume" hidden></p>
+          <p class="help">曜日は日付から自動計算します。入出庫を停止する日時は次の欄で指定できます。</p>
         </fieldset>
-        <fieldset data-modeonly="short">
-          <legend>工事場所と車両の扱い</legend>
-          <label class="field"><span>作業場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
-          <label class="field"><span>車両の扱い</span>
-            <select id="vehicleMode" aria-label="車両の扱い">
-              <option value="stay">入庫したままでよい（出庫不可）</option>
-              <option value="leave">工事開始までに出庫が必要</option>
-              <option value="custom">注意事項を自由記述</option>
+        <fieldset>
+          <legend>車両の扱い・利用制限</legend>
+          <label class="field">
+            <span>車両の扱い <em>必須</em></span>
+            <select id="vehicleMode" data-field="vehicleMode" required>
+              <option value="">選択してください</option>
+              <option value="stay">駐車したままでよい</option>
+              <option value="leave">事前の出庫が必要</option>
+              <option value="unrestricted">駐車・入出庫ともに通常どおり</option>
             </select>
           </label>
-          <p class="help">選択を変えると注意事項の文例が切り替わります。挿入された文例は編集できます。</p>
-          <label class="field"><span>注意事項①（赤字）</span><input type="text" data-field="notice1" maxlength="100" /></label>
-          <label class="field"><span>注意事項②（赤字）</span><input type="text" data-field="notice2" maxlength="100" /></label>
-          <label class="field"><span>注意事項②の補足（黒字）</span><input type="text" data-field="notice2Detail" maxlength="100" /></label>
+          <div class="field-grid conditional-fields" id="deadlineFields" hidden>
+            <label class="field"><span>出庫期限日 <em>必須</em></span><input type="date" data-field="deadlineDate" required /></label>
+            <label class="field"><span>出庫期限時刻 <em>必須</em></span><input type="time" data-field="deadlineTime" required /></label>
+          </div>
+          <div id="restrictionSettings" hidden>
+            <label class="field">
+              <span>入出庫の停止期間 <em>必須</em></span>
+              <select data-field="restrictionMode" required>
+                <option value="">選択してください</option>
+                <option value="work">工事日時と同じ</option>
+                <option value="continuous">開始から終了まで連続で停止（日時を指定）</option>
+                <option value="daily" id="restrictionDailyOption" hidden disabled>工事期間中、毎日同じ時刻に停止</option>
+              </select>
+            </label>
+            <div class="field-grid conditional-fields" id="restrictionTimeFields" hidden>
+              <label class="field restriction-date-field"><span>停止開始日 <em>必須</em></span><input type="date" data-field="restrictionStartDate" required /></label>
+              <label class="field"><span>停止開始時刻 <em>必須</em></span><input type="time" data-field="restrictionStartTime" required /></label>
+              <label class="field restriction-date-field"><span>停止終了日 <em>必須</em></span><input type="date" data-field="restrictionEndDate" required /></label>
+              <label class="field"><span>停止終了時刻 <em>必須</em></span><input type="time" data-field="restrictionEndTime" required /></label>
+            </div>
+            <p class="help" id="dailyRestrictionHelp" hidden>工事期間中は毎日同じ時刻に停止します。出庫期限は初回の停止に、利用再開予定は最終日の停止に対応します。</p>
+          </div>
+          <div id="resumeSettings" hidden>
+            <label class="field">
+              <span>利用再開予定 <em>必須</em></span>
+              <select data-field="resumeMode" required>
+                <option value="">選択してください</option>
+                <option value="restriction">入出庫の停止が終わり次第</option>
+                <option value="custom">再開日時を指定</option>
+                <option value="unknown">未定・別途案内</option>
+              </select>
+            </label>
+            <div class="field-grid conditional-fields" id="resumeCustomFields" hidden>
+              <label class="field"><span>利用再開日 <em>必須</em></span><input type="date" data-field="resumeDate" required /></label>
+              <label class="field"><span>利用再開時刻 <em>必須</em></span><input type="time" data-field="resumeTime" required /></label>
+            </div>
+          </div>
+          <p class="help legacy-note" id="legacyResume" hidden></p>
+          <p class="help legacy-note" id="legacyVehicleNotes" hidden></p>
+        </fieldset>
+        <fieldset data-modeonly="short">
+          <legend>作業場所・補足</legend>
+          <label class="field"><span>作業場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
+          <label class="field"><span>日時・車両の扱い以外の補足（任意）</span><input type="text" data-field="notice2Detail" maxlength="100" placeholder="例：緊急時は管理室へご連絡ください" /></label>
         </fieldset>
         <fieldset data-modeonly="long" hidden>
-          <legend>長期工事の注意事項</legend>
+          <legend>そのほかの注意事項（任意）</legend>
           <p class="help">案内文に載せる項目を選び、本文を編集できます。</p>
           <div id="longNotes">
-            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice1" /> 事前出庫</label><input aria-label="事前出庫の本文" data-field="notice1" type="text" maxlength="110" /></div>
-            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice2" /> 工事期間中の駐車禁止</label><input aria-label="工事期間中の駐車禁止の本文" data-field="notice2" type="text" maxlength="110" /></div>
-            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice3" /> 昼夜の入出庫禁止</label><input aria-label="昼夜の入出庫禁止の本文" data-field="notice3" type="text" maxlength="110" /></div>
             <div class="note-line"><label><input type="checkbox" data-noteenabled="notice4" /> 鍵・説明書の更新</label><input aria-label="鍵・説明書の更新の本文" data-field="notice4" type="text" maxlength="110" /></div>
             <div class="note-line"><label><input type="checkbox" data-noteenabled="notice5" /> 鍵・説明書の配布予定</label><input aria-label="鍵・説明書の配布予定の本文" data-field="notice5" type="text" maxlength="110" /></div>
             <div class="note-line"><label><input type="checkbox" data-noteenabled="notice6" /> 代替駐車場の案内</label><input aria-label="代替駐車場の案内の本文" data-field="notice6" type="text" maxlength="110" /></div>
@@ -134,6 +168,45 @@
       <p class="preview-foot no-print">配布前に、工事日時と車両の扱いが一致しているか、Wordで注意事項とページの収まりを確認してください。</p>
     </main>
   </div>
+  <dialog id="distributionDialog" class="distribution-dialog no-print" aria-labelledby="reviewTitle" aria-describedby="reviewDescription">
+    <h2 id="reviewTitle">配布前の確認</h2>
+    <p id="reviewDescription">案内に載る日時、車両の扱い、連絡先を確認してください。</p>
+    <dl class="review-summary">
+      <div>
+        <dt>案内の種類・物件名</dt>
+        <dd id="reviewModeProperty"></dd>
+      </div>
+      <div>
+        <dt>工事日時</dt>
+        <dd id="reviewSchedule"></dd>
+      </div>
+      <div>
+        <dt>車両の扱い</dt>
+        <dd id="reviewVehicle"></dd>
+      </div>
+      <div>
+        <dt>出庫期限</dt>
+        <dd id="reviewDeadline"></dd>
+      </div>
+      <div>
+        <dt>入出庫の停止期間</dt>
+        <dd id="reviewRestriction"></dd>
+      </div>
+      <div>
+        <dt>利用再開予定</dt>
+        <dd id="reviewResume"></dd>
+      </div>
+      <div>
+        <dt>連絡先</dt>
+        <dd id="reviewContact"></dd>
+      </div>
+    </dl>
+    <ul id="reviewWarnings" class="warnings" aria-label="配布前の確認事項" hidden></ul>
+    <div class="dialog-actions">
+      <button id="reviewBackButton" class="button secondary" type="button" autofocus>入力に戻る</button>
+      <button id="reviewConfirmButton" class="button primary" type="button">確認して出力</button>
+    </div>
+  </dialog>
   <script src="./app.js" type="module"></script>
 </body>
 </html>

@@ -88,8 +88,16 @@ export function fillDocument(templateXml, payload) {
   }
   if (extraOutlineLines) growOutline(document, extraOutlineLines);
   for (const [key, field] of fields) {
-    // Assign as text, keeping the source run properties and escaping XML once.
-    field.textContent = values[key];
+    const [first, ...lines] = values[key].split('\n');
+    // Keep wrapped dates on separate lines inside the original styled run.
+    field.textContent = first;
+    let last = field;
+    for (const line of lines) {
+      const next = field.cloneNode(false);
+      next.textContent = line;
+      last.after(document.createElementNS(W, 'w:br'), next);
+      last = next;
+    }
   }
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     new XMLSerializer().serializeToString(document.documentElement);

@@ -68,11 +68,18 @@ legend {
   border-bottom: 1px solid #e2e8ef;
   margin-bottom: 14px;
 }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
+.conditional-fields {
+  margin: 0 0 12px;
+  padding: 10px;
+  border-inline-start: 3px solid #bfd4ee;
+  border-radius: 0 6px 6px 0;
+  background: #f5f8fc;
+}
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 11px; min-width: 0; }
 .field-grid > .field { margin-bottom: 0; }
 .field.wide { grid-column: 1 / -1; }
-.field span { font-size: 11px; color: #475971; font-weight: 700; }
+.field span { font-size: 12px; color: #475971; font-weight: 700; }
 .field em { font-size: 10px; font-style: normal; color: #a12929; margin-left: 4px; }
 .field input, .field select, .note-line input[type="text"] {
   width: 100%;
@@ -88,11 +95,12 @@ legend {
   border-color: #3e72b4;
   outline: 2px solid #dbe9fb;
 }
-.field input[aria-invalid="true"] { border-color: #b23030; }
+.field :is(input, select)[aria-invalid="true"] { border-color: #b23030; }
 .field .field-error { color: #a12929; line-height: 1.35; font-size: 10px; }
 .field input::placeholder { color: #66758a; }
 .help, .privacy { font-size: 11px; color: #536077; line-height: 1.65; margin: 0 0 12px; }
 .field-grid + .help { margin-top: 9px; }
+.legacy-note { padding: 8px 10px; border-radius: 6px; background: #fff9ec; color: #6c4c15; white-space: pre-line; overflow-wrap: anywhere; }
 .note-line { display: grid; gap: 6px; margin: 0 0 13px; }
 .note-line label { display: flex; align-items: center; gap: 6px; color: #536077; font-size: 11px; font-weight: 700; }
 .note-line input[type="checkbox"] { accent-color: #2456a0; }
@@ -115,6 +123,38 @@ legend {
 .warnings { padding-inline-start: 2.2em; background: #fff9ec; border: 1px solid #efcf83; color: #6c4c15; }
 .export-status { background: #e7edf5; color: #304c6d; }
 .export-status.error { background: #fff0ed; color: #922720; }
+.distribution-dialog {
+  width: min(40rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 22px;
+  border: 1px solid #cdd7e5;
+  border-radius: 12px;
+  box-shadow: 0 14px 50px #19233640;
+  color: #192336;
+  line-height: 1.6;
+  font-size: 14px;
+}
+.distribution-dialog::backdrop { background: #19233680; }
+.distribution-dialog h2 { margin: 0; color: #233c5c; font-size: 19px; }
+.distribution-dialog > p { margin: 6px 0 14px; color: #475971; }
+.review-summary {
+  margin: 0 0 14px;
+  border: 1px solid #dce2eb;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f8fafc;
+}
+.review-summary > div {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 8px 0;
+}
+.review-summary > div + div { border-top: 1px solid #dce2eb; }
+.review-summary dt { color: #3c5570; font-weight: 600; }
+.review-summary dd { margin: 0; font-weight: 700; white-space: pre-line; overflow-wrap: anywhere; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.dialog-actions button:focus-visible { outline: 2px solid #2456a0; outline-offset: 2px; }
 .paper-scroller { display: flex; justify-content: center; align-items: flex-start; min-width: 0; overflow: hidden; }
 .paper-holder { position: relative; flex: none; }
 
@@ -209,7 +249,7 @@ legend {
 .notice-line.red { color: #e00; }
 .notice-body { display: flex; }
 .diamond { flex: 0 0 13pt; }
-.note-text { min-width: 0; }
+.note-text { min-width: 0; white-space: pre-line; }
 .secondary-note { font-size: 12pt; font-weight: normal; padding-inline-start: 13pt; }
 .note-detail { color: #111; padding-inline-start: 13.6pt; font-size: 12pt; line-height: 16pt; font-weight: normal; }
 .notice-line[data-gap="15"] { margin-bottom: 15pt; }
@@ -232,6 +272,10 @@ legend {
   .topbar { padding: 12px; }
   .actions { width: 100%; }
   .actions .button { flex: 1; }
+}
+@media (max-width: 560px) {
+  .distribution-dialog { padding: 16px; }
+  .review-summary > div { grid-template-columns: minmax(0, 1fr); }
 }
 
 @page { size: A4 portrait; margin: 12.5mm 0 13mm; }
