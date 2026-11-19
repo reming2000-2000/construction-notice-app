@@ -47,6 +47,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   font-weight: 700;
 }
 .mode-toggle button.active { color: #12335f; background: #fff; box-shadow: 0 1px 4px #16243b22; }
+.mode-status { flex: 0 0 100%; margin: 0; color: #3c5570; font-size: 12px; }
 
 .shell { display: grid; grid-template-columns: minmax(355px, 440px) minmax(0, 1fr); align-items: start; }
 .editor {
@@ -79,6 +80,7 @@ legend {
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 11px; min-width: 0; }
 .field-grid > .field { margin-bottom: 0; }
 .field.wide { grid-column: 1 / -1; }
+.time-entry { display: grid; gap: 6px; }
 .field span { font-size: 12px; color: #475971; font-weight: 700; }
 .field em { font-size: 10px; font-style: normal; color: #a12929; margin-left: 4px; }
 .field input, .field select, .note-line input[type="text"] {
@@ -137,6 +139,7 @@ legend {
 .distribution-dialog::backdrop { background: #19233680; }
 .distribution-dialog h2 { margin: 0; color: #233c5c; font-size: 19px; }
 .distribution-dialog > p { margin: 6px 0 14px; color: #475971; }
+.draft-switch-dialog { width: min(36rem, calc(100% - 2rem)); }
 .review-summary {
   margin: 0 0 14px;
   border: 1px solid #dce2eb;

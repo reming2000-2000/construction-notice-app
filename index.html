@@ -23,6 +23,7 @@
       <button id="pdfButton" class="button secondary" type="button" aria-haspopup="dialog" disabled>PDF保存・印刷</button>
       <button id="wordButton" class="button primary" type="button" aria-haspopup="dialog" disabled>Word出力 (.docx)</button>
     </div>
+    <p id="modeStatus" class="mode-status" role="status" hidden></p>
   </header>
   <div class="shell">
     <aside class="editor no-print" aria-label="工事案内文入力フォーム">
@@ -39,11 +40,24 @@
         </fieldset>
         <fieldset>
           <legend>工事日時</legend>
+          <p class="help" id="timeEntryHelp">時刻は30分刻みで選べます。細かな時刻は「時刻を入力」を選びます（例：08:15）。</p>
           <div class="field-grid">
             <label class="field"><span>開始日 <em>必須</em></span><input type="date" data-field="startDate" required /></label>
-            <label class="field"><span>開始時刻 <em>必須</em></span><input type="time" data-field="startTime" required /></label>
+            <div class="field time-field">
+              <label for="startTime"><span>開始時刻 <em>必須</em></span></label>
+              <div class="time-entry">
+                <select id="startTime" data-field="startTime" data-time-select required><option value="">時刻を選択</option></select>
+                <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="開始時刻を時分で入力" />
+              </div>
+            </div>
             <label class="field" data-modeonly="long" hidden><span>終了日 <em>必須</em></span><input type="date" data-field="endDate" required /></label>
-            <label class="field"><span>終了時刻 <em>必須</em></span><input type="time" data-field="endTime" required /></label>
+            <div class="field time-field">
+              <label for="endTime"><span>終了時刻 <em>必須</em></span></label>
+              <div class="time-entry">
+                <select id="endTime" data-field="endTime" data-time-select required><option value="">時刻を選択</option></select>
+                <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="終了時刻を時分で入力" />
+              </div>
+            </div>
           </div>
           <p class="help">曜日は日付から自動計算します。入出庫を停止する日時は次の欄で指定できます。</p>
         </fieldset>
@@ -53,30 +67,48 @@
             <span>車両の扱い <em>必須</em></span>
             <select id="vehicleMode" data-field="vehicleMode" required>
               <option value="">選択してください</option>
-              <option value="stay">駐車したままでよい</option>
-              <option value="leave">事前の出庫が必要</option>
-              <option value="unrestricted">駐車・入出庫ともに通常どおり</option>
+              <option value="stay">車を停めたままでよい</option>
+              <option value="leave">事前に車を出す必要がある</option>
+              <option value="unrestricted">制限なし（通常どおり使える）</option>
             </select>
           </label>
           <div class="field-grid conditional-fields" id="deadlineFields" hidden>
             <label class="field"><span>出庫期限日 <em>必須</em></span><input type="date" data-field="deadlineDate" required /></label>
-            <label class="field"><span>出庫期限時刻 <em>必須</em></span><input type="time" data-field="deadlineTime" required /></label>
+            <div class="field time-field">
+              <label for="deadlineTime"><span>出庫期限時刻 <em>必須</em></span></label>
+              <div class="time-entry">
+                <select id="deadlineTime" data-field="deadlineTime" data-time-select required><option value="">時刻を選択</option></select>
+                <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="出庫期限時刻を時分で入力" />
+              </div>
+            </div>
           </div>
           <div id="restrictionSettings" hidden>
             <label class="field">
               <span>入出庫の停止期間 <em>必須</em></span>
               <select data-field="restrictionMode" required>
                 <option value="">選択してください</option>
-                <option value="work">工事日時と同じ</option>
-                <option value="continuous">開始から終了まで連続で停止（日時を指定）</option>
-                <option value="daily" id="restrictionDailyOption" hidden disabled>工事期間中、毎日同じ時刻に停止</option>
+                <option value="work">工事開始から工事終了まで停止</option>
+                <option value="continuous">指定した日時の間、ずっと停止</option>
+                <option value="daily" id="restrictionDailyOption" hidden disabled>毎日、指定した時間帯だけ停止</option>
               </select>
             </label>
             <div class="field-grid conditional-fields" id="restrictionTimeFields" hidden>
               <label class="field restriction-date-field"><span>停止開始日 <em>必須</em></span><input type="date" data-field="restrictionStartDate" required /></label>
-              <label class="field"><span>停止開始時刻 <em>必須</em></span><input type="time" data-field="restrictionStartTime" required /></label>
+              <div class="field time-field">
+                <label for="restrictionStartTime"><span>停止開始時刻 <em>必須</em></span></label>
+                <div class="time-entry">
+                  <select id="restrictionStartTime" data-field="restrictionStartTime" data-time-select required><option value="">時刻を選択</option></select>
+                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="停止開始時刻を時分で入力" />
+                </div>
+              </div>
               <label class="field restriction-date-field"><span>停止終了日 <em>必須</em></span><input type="date" data-field="restrictionEndDate" required /></label>
-              <label class="field"><span>停止終了時刻 <em>必須</em></span><input type="time" data-field="restrictionEndTime" required /></label>
+              <div class="field time-field">
+                <label for="restrictionEndTime"><span>停止終了時刻 <em>必須</em></span></label>
+                <div class="time-entry">
+                  <select id="restrictionEndTime" data-field="restrictionEndTime" data-time-select required><option value="">時刻を選択</option></select>
+                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="停止終了時刻を時分で入力" />
+                </div>
+              </div>
             </div>
             <p class="help" id="dailyRestrictionHelp" hidden>工事期間中は毎日同じ時刻に停止します。出庫期限は初回の停止に、利用再開予定は最終日の停止に対応します。</p>
           </div>
@@ -85,14 +117,20 @@
               <span>利用再開予定 <em>必須</em></span>
               <select data-field="resumeMode" required>
                 <option value="">選択してください</option>
-                <option value="restriction">入出庫の停止が終わり次第</option>
-                <option value="custom">再開日時を指定</option>
-                <option value="unknown">未定・別途案内</option>
+                <option value="restriction">入出庫の停止が終わる時刻に再開</option>
+                <option value="custom">指定した日時に再開</option>
+                <option value="unknown">再開日時は未定（別途お知らせ）</option>
               </select>
             </label>
             <div class="field-grid conditional-fields" id="resumeCustomFields" hidden>
               <label class="field"><span>利用再開日 <em>必須</em></span><input type="date" data-field="resumeDate" required /></label>
-              <label class="field"><span>利用再開時刻 <em>必須</em></span><input type="time" data-field="resumeTime" required /></label>
+              <div class="field time-field">
+                <label for="resumeTime"><span>利用再開時刻 <em>必須</em></span></label>
+                <div class="time-entry">
+                  <select id="resumeTime" data-field="resumeTime" data-time-select required><option value="">時刻を選択</option></select>
+                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="利用再開時刻を時分で入力" />
+                </div>
+              </div>
             </div>
           </div>
           <p class="help legacy-note" id="legacyResume" hidden></p>
@@ -168,6 +206,16 @@
       <p class="preview-foot no-print">配布前に、工事日時と車両の扱いが一致しているか、Wordで注意事項とページの収まりを確認してください。</p>
     </main>
   </div>
+  <dialog id="draftSwitchDialog" class="distribution-dialog draft-switch-dialog no-print" aria-labelledby="switchDraftTitle" aria-describedby="switchDraftDescription switchDraftNote">
+    <h2 id="switchDraftTitle">切り替え先の入力を選択</h2>
+    <p id="switchDraftDescription">切り替え先に保存済みの入力があります。</p>
+    <p id="switchDraftNote">今の入力を引き継ぐと、切り替え先の保存済み入力が置き換わります。</p>
+    <div class="dialog-actions">
+      <button id="switchCancelButton" class="button" type="button" autofocus>切り替えない</button>
+      <button id="switchSavedButton" class="button secondary" type="button">保存済みの入力を使う</button>
+      <button id="switchCarryButton" class="button primary" type="button">今の入力を引き継ぐ</button>
+    </div>
+  </dialog>
   <dialog id="distributionDialog" class="distribution-dialog no-print" aria-labelledby="reviewTitle" aria-describedby="reviewDescription">
     <h2 id="reviewTitle">配布前の確認</h2>
     <p id="reviewDescription">案内に載る日時、車両の扱い、連絡先を確認してください。</p>

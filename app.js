@@ -1,7 +1,7 @@
 /* Static browser app. The preview, browser print and Word share one notice payload. */
 import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
-  layoutWarnings, wordFilename,
+  layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput,
 } from './notice.js';
 import { loadWordTemplate, createWord } from './word.js';
 
@@ -9,9 +9,9 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const storageKey = 'parkingNoticeDrafts';
 const modes = { short: '短期工事', long: '長期工事' };
-let mode = 'short';
 let exporting = false;
 let pendingReview = null;
+let pendingMode = '';
 let layoutFrame;
 let textWarnings = [];
 
@@ -26,20 +26,27 @@ function storageWarning() {
   status.textContent = 'このブラウザでは下書きを保存できません。ページを閉じる前に必要な案内文を保存してください。';
 }
 
-function loadDrafts() {
+function loadDraftState() {
   try {
-    return restoreDrafts(JSON.parse(localStorage.getItem(storageKey)));
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    return {
+      drafts: restoreDrafts(saved),
+      mode: saved?.mode === 'long' ? 'long' : 'short',
+      linked: saved?.linked === true,
+    };
   } catch {
     storageWarning();
-    return restoreDrafts(null);
+    return { drafts: restoreDrafts(null), mode: 'short', linked: false };
   }
 }
 
-const drafts = loadDrafts();
+const initialState = loadDraftState();
+const { drafts } = initialState;
+let { mode, linked } = initialState;
 
 function saveDrafts() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(drafts));
+    localStorage.setItem(storageKey, JSON.stringify({ ...drafts, mode, linked }));
     $('#storageStatus').hidden = true;
   } catch {
     storageWarning();
@@ -50,10 +57,30 @@ function inputMode(input) {
   return input.closest('[data-modeonly]')?.dataset.modeonly ?? mode;
 }
 
+function timeEditor(select) {
+  return select.closest('.time-entry').querySelector('[data-time-custom]');
+}
+
+function setTimeField(select, value) {
+  select.querySelector('[data-saved-time]')?.remove();
+  const editor = timeEditor(select);
+  if (validTime(value) && !/:(00|30)$/.test(value)) {
+    const option = new Option(`${value}（設定済み）`, value);
+    option.dataset.savedTime = '';
+    select.add(option, select.querySelector('[value="custom"]'));
+  }
+  const custom = value && !validTime(value);
+  select.value = custom ? 'custom' : value;
+  editor.value = custom ? value : '';
+  editor.hidden = !custom;
+}
+
 function updateForm() {
   $$('[data-modeonly]').forEach(node => { node.hidden = node.dataset.modeonly !== mode; });
   $$('[data-field]').forEach(input => {
-    input.value = drafts[inputMode(input)][input.dataset.field] ?? '';
+    const value = drafts[inputMode(input)][input.dataset.field] ?? '';
+    if (input.hasAttribute('data-time-select')) setTimeField(input, value);
+    else input.value = value;
   });
   $$('[data-noteenabled]').forEach(input => {
     input.checked = drafts.long.noteEnabled[input.dataset.noteenabled];
@@ -90,9 +117,45 @@ function showExportStatus(message = '', error = false) {
 
 function setMode(next) {
   if (mode === next) return;
+  const hasInput = hasDraftInput(mode, drafts[mode]);
+  if (!linked && hasInput && hasDraftInput(next, drafts[next])) {
+    pendingMode = next;
+    const existing = drafts[next].propertyName.trim();
+    const name = existing ? `「${existing}」の` : '';
+    putText('switchDraftDescription',
+      `${modes[next]}に${name}下書きがあります。いまの案内を続けるか、保存済みの下書きを開くか選んでください。`);
+    $('#draftSwitchDialog').showModal();
+    $('#switchCancelButton').focus();
+    return;
+  }
+  switchDraft(next, linked || hasInput);
+}
+
+function showModeStatus(message = '') {
+  $('#modeStatus').hidden = !message;
+  putText('modeStatus', message);
+}
+
+function switchDraft(next, carry) {
+  if (carry) {
+    const base = linked ? drafts[next] : createDraft(next);
+    drafts[next] = carryDraft(mode, next, drafts[mode], base);
+  }
+  linked = carry;
   mode = next;
   if (!exporting) showExportStatus();
   updateForm();
+  saveDrafts();
+  showModeStatus(carry
+    ? `${modes[next]}に共通の入力を引き継ぎました。${next === 'short' ? '工事は開始日と同じ日に終了します。' : ''}`
+    : `${modes[next]}の下書きを開きました。`);
+}
+
+function finishDraftSwitch(action) {
+  const next = pendingMode;
+  pendingMode = '';
+  $('#draftSwitchDialog').close();
+  if (next && action !== 'cancel') switchDraft(next, action === 'carry');
 }
 
 function renderNotes(payload) {
@@ -178,21 +241,28 @@ function render() {
 function renderFieldErrors(errors) {
   $$('[data-field]').forEach(input => {
     const message = inputMode(input) === mode ? errors.get(input.dataset.field) : '';
-    let hint = input.nextElementSibling;
+    const time = input.closest('.time-entry');
+    const anchor = time || input;
+    const controls = time ? [input, timeEditor(input)] : [input];
+    let hint = anchor.nextElementSibling;
     if (message) {
       if (!hint?.classList.contains('field-error')) {
         hint = document.createElement('span');
         hint.className = 'field-error';
         hint.id = `error-${input.dataset.field}`;
-        input.after(hint);
+        anchor.after(hint);
       }
       hint.textContent = message;
-      input.setAttribute('aria-invalid', 'true');
-      input.setAttribute('aria-describedby', hint.id);
+      for (const control of controls) {
+        control.setAttribute('aria-invalid', 'true');
+        control.setAttribute('aria-describedby', hint.id);
+      }
     } else if (hint?.classList.contains('field-error')) {
       hint.remove();
-      input.removeAttribute('aria-invalid');
-      input.removeAttribute('aria-describedby');
+      for (const control of controls) {
+        control.removeAttribute('aria-invalid');
+        control.removeAttribute('aria-describedby');
+      }
     }
   });
 }
@@ -319,21 +389,49 @@ async function downloadWord({ kind, payload, filename }) {
 
 function replaceDraft(next) {
   drafts[mode] = next;
+  linked = false;
   showExportStatus();
+  showModeStatus();
   updateForm();
   saveDrafts();
 }
 
+function updateDraftField(input, value) {
+  drafts[inputMode(input)][input.dataset.field] = value;
+  if (!exporting) showExportStatus();
+  render();
+  saveDrafts();
+}
+
+function initTimeField(select) {
+  select.add(new Option('時刻を入力', 'custom'));
+  for (let hour = 0; hour < 24; hour++) {
+    for (const minute of ['00', '30']) {
+      const time = `${String(hour).padStart(2, '0')}:${minute}`;
+      select.add(new Option(time, time));
+    }
+  }
+  const editor = timeEditor(select);
+  select.addEventListener('change', () => {
+    const custom = select.value === 'custom';
+    editor.hidden = !custom;
+    if (custom) {
+      editor.value = drafts[inputMode(select)][select.dataset.field];
+      editor.focus();
+      editor.select();
+    } else {
+      updateDraftField(select, select.value);
+    }
+  });
+  editor.addEventListener('input', () => updateDraftField(select, normalizeTimeInput(editor.value)));
+}
+
 function init() {
   $('#editorForm').addEventListener('submit', event => event.preventDefault());
-  $$('[data-field]').forEach(input => input.addEventListener('input', () => {
-    const draft = drafts[inputMode(input)];
-    const key = input.dataset.field;
-    draft[key] = input.value;
-    if (!exporting) showExportStatus();
-    render();
-    saveDrafts();
-  }));
+  $$('[data-field]').forEach(input => {
+    if (input.hasAttribute('data-time-select')) initTimeField(input);
+    else input.addEventListener('input', () => updateDraftField(input, input.value));
+  });
   $$('[data-noteenabled]').forEach(input => input.addEventListener('change', () => {
     drafts.long.noteEnabled[input.dataset.noteenabled] = input.checked;
     if (!exporting) showExportStatus();
@@ -342,9 +440,12 @@ function init() {
   }));
   $('#shortButton').onclick = () => setMode('short');
   $('#longButton').onclick = () => setMode('long');
+  $('#switchCarryButton').onclick = () => finishDraftSwitch('carry');
+  $('#switchSavedButton').onclick = () => finishDraftSwitch('saved');
+  $('#switchCancelButton').onclick = () => finishDraftSwitch('cancel');
+  $('#draftSwitchDialog').addEventListener('cancel', () => { pendingMode = ''; });
   $('#sampleButton').onclick = () => {
-    const unchanged = JSON.stringify(drafts[mode]) === JSON.stringify(createDraft(mode));
-    if (unchanged || confirm(`現在の${modes[mode]}の入力を架空のサンプルに置き換えますか？`)) {
+    if (!hasDraftInput(mode, drafts[mode]) || confirm(`現在の${modes[mode]}の入力を架空のサンプルに置き換えますか？`)) {
       replaceDraft(sampleDraft(mode));
     }
   };

@@ -82,6 +82,30 @@ export function createDraft(mode, now = new Date()) {
   };
 }
 
+export function hasDraftInput(mode, draft) {
+  const defaults = createDraft(mode);
+  return Object.keys(defaults).some(key =>
+    key === 'noteEnabled'
+      ? OPTIONAL_NOTE_KEYS.some(note => draft.noteEnabled[note] !== defaults.noteEnabled[note])
+      : draft[key] !== defaults[key]);
+}
+
+export function carryDraft(from, to, source, destination) {
+  const sourceDefaults = createDraft(from);
+  const result = { ...destination };
+  // A daily restriction only belongs to the long layout.
+  const dailyOnly = source.restrictionMode === 'daily' || destination.restrictionMode === 'daily';
+  for (const key of Object.keys(sourceDefaults)) {
+    if (!Object.hasOwn(destination, key) || (dailyOnly && key.startsWith('restriction'))) continue;
+    if (key === 'title' && source.title === sourceDefaults.title) {
+      result.title = createDraft(to).title;
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
 function restoreLegacyOptions(mode, draft, previous) {
   // The old controls supplied a vehicle rule and a reopening assumption even
   // when no one chose them. Keep old edits visible as reference only.
@@ -179,8 +203,14 @@ function monthParts(value) {
   return value.split('-').map(Number);
 }
 
-function validTime(value) {
+export function validTime(value) {
   return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+export function normalizeTimeInput(value) {
+  const text = value.normalize('NFKC').trim();
+  const match = /^(\d{1,2}):?(\d{2})$/.exec(text);
+  return match ? `${match[1].padStart(2, '0')}:${match[2]}` : text;
 }
 
 function fullWidth(value) {
