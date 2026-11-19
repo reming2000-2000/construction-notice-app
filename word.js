@@ -127,10 +127,6 @@ export function fillDocument(templateXml, payload) {
   const notesHeading = paragraph('notesHeading');
   const contactHeading = paragraph('contact').previousElementSibling;
   const extraNoteStyle = paragraph(mode === 'short' ? 'notice2Detail' : 'notice5').cloneNode(true);
-  const extraIndent = extraNoteStyle.firstElementChild.getElementsByTagNameNS(W, 'ind')[0];
-  extraIndent.removeAttributeNS(W, 'firstLine');
-  extraIndent.setAttributeNS(W, 'w:left', '240');
-  extraIndent.setAttributeNS(W, 'w:hanging', '240');
 
   if (compactSchedule) {
     const scheduleHeading = paragraph('mainDate').previousElementSibling;
@@ -161,20 +157,22 @@ export function fillDocument(templateXml, payload) {
       }
     }
     const lineSpacing = spacing(line);
+    const props = line.firstElementChild;
+    const indent = document.createElementNS(W, 'w:ind');
+    // Keep the first line at the template margin and align continuations with the text.
+    for (const attribute of ['left', 'hanging']) indent.setAttributeNS(W, 'w:' + attribute, note.additional ? '240' : '320');
+    props.getElementsByTagNameNS(W, 'ind')[0]?.remove();
+    lineSpacing.after(indent);
     lineSpacing.setAttributeNS(W, 'w:line', '320');
     if (next) lineSpacing.setAttributeNS(W, 'w:after', '80');
+    for (const color of line.getElementsByTagNameNS(W, 'color')) {
+      color.setAttributeNS(W, 'w:val', note.red ? 'EE0000' : '000000');
+    }
     if (note.additional) {
       setRunText(line.getElementsByTagNameNS(W, 't')[0], `◆ ${note.text}`);
       contactHeading.before(line);
-    } else {
-      const props = line.firstElementChild;
-      props.getElementsByTagNameNS(W, 'ind')[0]?.remove();
-      for (const color of line.getElementsByTagNameNS(W, 'color')) {
-        color.setAttributeNS(W, 'w:val', note.red ? 'EE0000' : '000000');
-      }
-      if (next && !next.additional) {
-        props.insertBefore(document.createElementNS(W, 'w:keepNext'), props.getElementsByTagNameNS(W, 'keepLines')[0]);
-      }
+    } else if (next && !next.additional) {
+      props.insertBefore(document.createElementNS(W, 'w:keepNext'), props.getElementsByTagNameNS(W, 'keepLines')[0]);
     }
   }
   if (fullEnd) {

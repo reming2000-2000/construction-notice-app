@@ -60,6 +60,20 @@ button:disabled { opacity: .55; cursor: not-allowed; }
   top: 0;
 }
 fieldset { border: 0; margin: 0 0 21px; padding: 0; min-width: 0; }
+.editor-details { margin: 11px 0 16px; }
+.editor-details > summary {
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: #f1f5fa;
+  color: #233c5c;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.editor-details > summary:focus-visible { outline: 2px solid #2456a0; outline-offset: 2px; }
+.editor-details[open] > summary { margin-bottom: 8px; }
+.detail-status { margin-inline-start: 5px; color: #436387; font-size: 11px; }
+.detail-status.needs-attention { color: #a12929; }
 legend {
   font-size: 12px;
   font-weight: 800;
@@ -129,6 +143,9 @@ legend {
 .note-category { display: grid; gap: 6px; margin-bottom: 12px; }
 .notice-choices { display: grid; gap: 6px; }
 .preset-help, .preset-detail { margin: 5px 0 0 27px; }
+.preset-preview { white-space: pre-line; overflow-wrap: anywhere; }
+.editor-details.preset-detail > summary { background: transparent; padding: 3px 0; }
+#otherNoticeDetails #targetSpacesField, #caseStatus { margin-top: 8px; }
 .preset-detail textarea { resize: vertical; }
 .example-row { display: flex; gap: 6px; }
 .example-row .choice-row { flex: 1; min-width: 0; }
@@ -157,6 +174,7 @@ legend {
   line-height: 1.6;
 }
 .warnings { padding-inline-start: 2.2em; background: #fff9ec; border: 1px solid #efcf83; color: #6c4c15; }
+.warning-link { border: 0; padding: 0 2px; background: none; color: #2456a0; text-decoration: underline; }
 .export-status { background: #e7edf5; color: #304c6d; }
 .export-status.error { background: #fff0ed; color: #922720; }
 .distribution-dialog {

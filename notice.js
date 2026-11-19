@@ -60,12 +60,27 @@ const vehicleLabels = {
   restricted: '入出庫不可のみ',
 };
 
+export const contactFields = ['issuerName', 'contactPerson', 'contactPhone', 'contactHours'];
+
+export function noticeTitle(draft) {
+  if (draft.titleMode === 'manual') return cleanText(draft.title);
+  const work = cleanText(draft.workDescription).normalize('NFKC');
+  const matches = [
+    [/制御.*(?:リニューアル|更新|交換)|(?:リニューアル|更新).*制御/, '制御リニューアル工事'],
+    [/交換|取[り]?替え?/, '部品交換作業'],
+  ];
+  const subject = matches.find(([pattern]) => pattern.test(work))?.[1] ?? '工事';
+  return `機械式駐車装置　${subject}のお知らせ`;
+}
+
 export function createDraft(mode, now = new Date()) {
   const common = {
     issueMonth: `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}`,
     recipient: '機械式駐車場 ご利用者 様',
     propertyName: '',
     workDescription: '',
+    titleMode: 'auto',
+    title: '',
     startDate: '',
     startTime: '',
     endTime: '',
@@ -89,13 +104,11 @@ export function createDraft(mode, now = new Date()) {
   if (mode === 'short') {
     return {
       ...common,
-      title: '機械式駐車装置　部品交換作業のお知らせ',
       location: '',
     };
   }
   return {
     ...common,
-    title: '機械式駐車装置　制御リニューアル工事のお知らせ',
     endDate: '',
   };
 }
@@ -103,6 +116,7 @@ export function createDraft(mode, now = new Date()) {
 export function hasDraftInput(mode, draft) {
   const defaults = createDraft(mode);
   return Object.keys(defaults).some(key => {
+    if (contactFields.includes(key)) return false;
     if (key === 'additionalNotes') return draft[key].some(note => noticeText(note.text));
     if (key === 'selectedNotices') return draft[key].length > 0;
     if (key === 'noticeOverrides') return Object.keys(draft[key]).length > 0;
@@ -116,9 +130,7 @@ export function carryDraft(from, to, source, destination) {
 
   for (const key of Object.keys(sourceDefaults)) {
     if (!Object.hasOwn(destination, key)) continue;
-    if (key === 'title' && source.title === sourceDefaults.title) {
-      result.title = createDraft(to).title;
-    } else if (key === 'additionalNotes') {
+    if (key === 'additionalNotes') {
       result.additionalNotes = source.additionalNotes.map(note => ({ ...note }));
     } else if (key === 'selectedNotices') {
       result.selectedNotices = [...source.selectedNotices];
@@ -158,6 +170,8 @@ export function restoreDrafts(saved) {
       }
     }
     const current = Array.isArray(previous.selectedNotices);
+    if (!Object.hasOwn(previous, 'titleMode') && cleanText(draft.title)) draft.titleMode = 'manual';
+    if (draft.titleMode !== 'manual') draft.titleMode = 'auto';
     if (legacy) restoreLegacyOptions(mode, draft, previous);
     if (!Object.hasOwn(vehicleLabels, draft.vehicleMode)) draft.vehicleMode = '';
     if (!Object.hasOwn(restrictionCopy, draft.restrictionMode)) draft.restrictionMode = '';
@@ -354,7 +368,6 @@ function noticeText(value) {
 
 const requiredText = {
   propertyName: '物件名',
-  title: '案内文タイトル',
   workDescription: '工事内容',
   issuerName: '施工会社名',
   contactPhone: '電話番号',
@@ -405,6 +418,7 @@ export function validate(mode, draft) {
   for (const [key, label] of Object.entries(requiredText)) {
     if (!cleanText(draft[key])) errors.set(key, `${label}を入力してください。`);
   }
+  if (!noticeTitle(draft)) errors.set('title', '案内文タイトルを入力してください。');
   if (!monthParts(draft.issueMonth)) errors.set('issueMonth', '発行年月を入力してください。');
 
   const start = dateParts(draft.startDate);
@@ -463,22 +477,22 @@ function collectNotes(mode, draft, work) {
     { key: short ? 'notice2' : 'notice3', text: rule, red: draft.vehicleMode === 'leave' },
   ].filter(note => note.text);
   const added = new Set(notes.map(note => note.text.normalize('NFKC').replace(/\s/g, '')));
-  const append = (value, optionId) => {
+  const append = (value, source) => {
     const text = noticeText(value);
     const normalized = text.normalize('NFKC').replace(/\s/g, '');
     if (!normalized || added.has(normalized)) return;
     added.add(normalized);
-    notes.push({ text, additional: true, optionId });
+    notes.push({ text, additional: true, red: source.optionId === 'spaces', ...source });
   };
   for (const { id, text } of additionalOptions) {
     if (!draft.selectedNotices.includes(id) || !canSelectNotice(draft, id)) continue;
     const value = id === 'resume' ? resume :
       id === 'spaces' ? `対象車室${spaces ? `（${spaces}）` : ''}のお車は、工事開始までに出庫してください。` :
       noticeText(draft.noticeOverrides[id]) || text;
-    append(value, id);
+    append(value, { optionId: id });
   }
-  for (const note of draft.additionalNotes) {
-    if (note.enabled) append(note.text);
+  for (const [freeIndex, note] of draft.additionalNotes.entries()) {
+    if (note.enabled) append(note.text, { freeIndex });
   }
   return {
     notes,
@@ -512,7 +526,7 @@ export function noticePayload(mode, draft) {
     issue: month ? `${fullWidth(draft.issueMonth.slice(0, 4))}年${fullWidth(month[1])}月吉日` : '［発行年月未入力］',
     recipient: cleanText(draft.recipient),
     issuer: `施工会社：${issuer}`,
-    title: cleanText(draft.title) || '［案内文タイトル未入力］',
+    title: noticeTitle(draft) || '［案内文タイトル未入力］',
     contact: [
       `${issuer}：${phone}`,
       person && `（担当：${person}）`,
@@ -579,7 +593,8 @@ export function layoutWarnings(mode, draft, payload) {
     ['workDescription', '工事内容', 50], ['location', '作業場所', 25],
   ];
   for (const [key, label, limit] of wideFields) {
-    if (textWidth(draft[key]) > limit) warnings.push(`${label}が長いため、折り返しを確認してください。`);
+    const value = key === 'title' ? payload.values.title : draft[key];
+    if (textWidth(value) > limit) warnings.push(`${label}が長いため、折り返しを確認してください。`);
   }
   if (payload.notes.some(note => note.text.split('\n').some(line => textWidth(line) > 52))) {
     warnings.push('注意事項が長いため、折り返しや改ページを確認してください。');
@@ -590,10 +605,93 @@ export function layoutWarnings(mode, draft, payload) {
   return warnings;
 }
 
-export function wordFilename(draft) {
+export function noticeWarnings(payload) {
+  const restriction = payload.notes.find(note => note.key === 'notice1');
+  const continuous = restriction?.text === restrictionCopy.continuous;
+  const instructions = payload.notes.map(note => {
+    const result = { note, park: false, depart: false, permit: false };
+    for (const sentence of note.text.split(/[。\n]+/)) {
+      // Treat only clear instructions as candidates. Avoid comparing a
+      // conditional or limited vehicle instruction with a rule for every space.
+      const scoped = /車室|区画|対象|指定|一部|以外|場合|除く/.test(sentence);
+      result.park ||= !scoped && /(?:車両|お車).{0,12}(?:入庫|駐車)(?:した)?まま(?:で|でも)(?:問題ありません|構いません|大丈夫です)/.test(sentence);
+      result.depart ||= !scoped && /(?:工事|作業)(?:の)?(?:前に|開始(?:時刻|時間)?までに).{0,22}(?:出庫|移動)を?(?:してください|願います|お願いします)/.test(sentence);
+      const permission = /(?:工事|作業)(時間|期間)?中.{0,18}(?:入出庫|出し入れ)(?:は|が)?(?:できます|可能です)[！! \t]*$/.exec(sentence);
+      result.permit ||= !!permission && !/場合|終了後|時間外/.test(sentence) &&
+        (continuous || (permission[1] !== '期間' && !/夜間|休工日/.test(sentence)));
+    }
+    return result;
+  });
+  const allowsParking = instructions.some(item => item.park);
+  const requiresDeparture = instructions.some(item => item.depart);
+  const warnings = [];
+  for (const { note, park, depart, permit } of instructions) {
+    if (!note.additional) continue;
+    if (restriction && permit) {
+      warnings.push({ note, message: '入出庫制限と、工事中も入出庫できると読める注意事項が食い違う可能性があります。' });
+    }
+    if ((park && requiresDeparture) || (depart && allowsParking)) {
+      warnings.push({ note, message: '車両を残せるという案内と、事前出庫を求める案内が食い違う可能性があります。' });
+    }
+  }
+  return warnings;
+}
+
+function safePropertyFilename(draft) {
   const name = cleanText(draft.propertyName)
     .replace(/[\\/:*?"<>|\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g, '_')
     .replace(/^[.\s]+|[.\s]+$/g, '');
-  const shortName = Array.from(name).slice(0, 48).join('') || '物件名未入力';
-  return `${draft.startDate}_${shortName}_工事案内文.docx`;
+  return Array.from(name).slice(0, 48).join('') || '物件名未入力';
+}
+
+export function wordFilename(draft) {
+  return `${draft.startDate}_${safePropertyFilename(draft)}_工事案内文.docx`;
+}
+
+export const maxCaseBytes = 1024 * 1024;
+const caseFormat = 'construction-notice-draft';
+const caseVersion = 1;
+
+export function exportCase(mode, draft) {
+  const text = JSON.stringify({ format: caseFormat, version: caseVersion, mode, title: noticeTitle(draft), draft }, null, 2);
+  return { text, filename: `工事案内文_${safePropertyFilename(draft)}.json` };
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function importCase(text) {
+  let file;
+  try {
+    file = JSON.parse(text);
+  } catch {
+    throw new Error('JSONファイルを読み取れませんでした。');
+  }
+  if (!isRecord(file) || file.format !== caseFormat) throw new Error('工事案内文の案件データを選択してください。');
+  if (file.version !== caseVersion) throw new Error('このバージョンの案件データには対応していません。');
+  const { mode, draft } = file;
+  if (!['short', 'long'].includes(mode) || !isRecord(draft)) throw new Error('案内の種類または入力内容が不正です。');
+  const fields = createDraft(mode);
+  const options = additionalOptions.map(({ id }) => id);
+  const customOptions = additionalOptions.filter(({ text }) => text).map(({ id }) => id);
+  const allowedValues = {
+    titleMode: ['auto', 'manual'],
+    vehicleMode: ['', ...Object.keys(vehicleLabels)],
+    restrictionMode: ['', ...Object.keys(restrictionCopy)],
+    restrictionColor: ['red', 'black'],
+    resumeMode: ['restriction', 'custom'],
+  };
+  const invalidFields = Object.entries(fields).some(([key, value]) =>
+    typeof value === 'string' && (!Object.hasOwn(draft, key) || typeof draft[key] !== 'string' ||
+      (allowedValues[key] && !allowedValues[key].includes(draft[key]))));
+  if (invalidFields || !Array.isArray(draft.selectedNotices) ||
+      draft.selectedNotices.some(id => !options.includes(id)) || !isRecord(draft.noticeOverrides) ||
+      Object.entries(draft.noticeOverrides).some(([key, value]) => !customOptions.includes(key) || typeof value !== 'string') ||
+      !Array.isArray(draft.additionalNotes) || draft.additionalNotes.some(note =>
+        !isRecord(note) || typeof note.text !== 'string' || typeof note.enabled !== 'boolean' ||
+        (Object.hasOwn(note, 'exampleId') && typeof note.exampleId !== 'string'))) {
+    throw new Error('案件データの入力項目または注意事項が不正です。');
+  }
+  return { mode, draft: restoreDrafts({ [mode]: draft })[mode] };
 }

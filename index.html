@@ -31,12 +31,16 @@
         <fieldset>
           <legend>基本情報</legend>
           <div class="field-grid">
+            <label class="field wide"><span>物件名 <em>必須</em></span><input type="text" data-field="propertyName" maxlength="80" placeholder="例：〇〇ビル" required /></label>
+            <label class="field wide"><span>工事内容 <em>必須</em></span><input type="text" data-field="workDescription" maxlength="100" placeholder="例：〇〇の交換作業" required /></label>
             <label class="field"><span>発行年月 <em>必須</em></span><input type="month" data-field="issueMonth" required /></label>
             <label class="field"><span>宛名</span><input type="text" data-field="recipient" maxlength="40" placeholder="機械式駐車場 ご利用者 様" /></label>
-            <label class="field wide"><span>物件名 <em>必須</em></span><input type="text" data-field="propertyName" maxlength="80" placeholder="例：〇〇ビル" required /></label>
-            <label class="field wide"><span>案内文のタイトル <em>必須</em></span><input type="text" data-field="title" maxlength="52" required /></label>
-            <label class="field wide"><span>工事内容 <em>必須</em></span><input type="text" data-field="workDescription" maxlength="100" placeholder="例：〇〇の交換作業" required /></label>
           </div>
+          <details id="titleDetails" class="editor-details">
+            <summary>タイトルを個別に変更 <span id="titleDetailStatus" class="detail-status"></span></summary>
+            <label class="field"><span>案内文のタイトル</span><input type="text" data-field="title" maxlength="52" readonly /></label>
+            <button id="titleModeButton" class="button secondary" type="button">タイトルを手動で編集</button>
+          </details>
         </fieldset>
         <fieldset>
           <legend>工事日時</legend>
@@ -112,21 +116,21 @@
               </div>
             </div>
           </div>
-          <div class="note-category">
-            <h3>その他の追加事項</h3>
+          <details id="otherNoticeDetails" class="editor-details">
+            <summary>その他の追加事項 <span id="otherNoticeStatus" class="detail-status"></span></summary>
             <div id="otherNoticeChoices" class="notice-choices"></div>
-          </div>
-          <label class="field" id="targetSpacesField" hidden>
-            <span>対象車室番号（任意）</span>
-            <input type="text" data-field="targetSpaces" maxlength="80" placeholder="例：12番・13番" />
-          </label>
+            <label class="field" id="targetSpacesField" hidden>
+              <span>対象車室番号（任意）</span>
+              <input type="text" data-field="targetSpaces" maxlength="80" placeholder="例：12番・13番" />
+            </label>
+          </details>
         </fieldset>
         <fieldset data-modeonly="short">
           <legend>作業場所（任意）</legend>
           <label class="field"><span>号機・場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
         </fieldset>
-        <fieldset>
-          <legend>自由入力の注意事項（任意）</legend>
+        <details id="freeNoticeDetails" class="editor-details">
+          <summary>自由入力の注意事項 <span id="freeNoticeStatus" class="detail-status"></span></summary>
           <div id="noteChoices"></div>
           <button id="addNoteButton" class="button secondary" type="button">注意事項を追加</button>
           <p class="help note-storage">「文例に登録」で、次回もこのブラウザから選べます。</p>
@@ -146,7 +150,7 @@
               <textarea rows="2" data-note-text placeholder="例：作業中は騒音が発生する場合があります。"></textarea>
             </div>
           </template>
-        </fieldset>
+        </details>
         <fieldset>
           <legend>施工会社・お問い合わせ</legend>
           <div class="field-grid">
@@ -156,6 +160,15 @@
             <label class="field wide"><span>受付時間</span><input type="text" data-field="contactHours" maxlength="55" /></label>
           </div>
         </fieldset>
+        <details id="caseDetails" class="editor-details">
+          <summary>案件データの保存・読み込み</summary>
+          <div class="note-editor-buttons">
+            <button id="saveCaseButton" class="button secondary" type="button">JSONで保存</button>
+            <button id="loadCaseButton" class="button" type="button">JSONを選択</button>
+            <input id="caseFile" type="file" accept=".json,application/json" hidden />
+          </div>
+          <p id="caseStatus" class="help" role="status" hidden></p>
+        </details>
       </form>
       <p class="privacy">下書きはこのブラウザに保存します。入力内容をサーバーに送信することはありません。</p>
       <p class="help" id="storageStatus" role="status" hidden></p>
@@ -253,6 +266,20 @@
     <div class="dialog-actions">
       <button id="reviewBackButton" class="button secondary" type="button" autofocus>入力に戻る</button>
       <button id="reviewConfirmButton" class="button primary" type="button">確認して出力</button>
+    </div>
+  </dialog>
+  <dialog id="caseDialog" class="distribution-dialog no-print" aria-labelledby="caseTitle" aria-describedby="caseDescription">
+    <h2 id="caseTitle">読み込む案件を確認</h2>
+    <p id="caseDescription"></p>
+    <dl class="review-summary">
+      <div><dt>案内の種類</dt><dd id="caseMode"></dd></div>
+      <div><dt>物件名</dt><dd id="caseProperty"></dd></div>
+      <div><dt>工事内容</dt><dd id="caseWork"></dd></div>
+      <div><dt>案内文のタイトル</dt><dd id="caseNoticeTitle"></dd></div>
+    </dl>
+    <div class="dialog-actions">
+      <button id="cancelCaseButton" class="button secondary" type="button" autofocus>キャンセル</button>
+      <button id="confirmCaseButton" class="button primary" type="button">この案件を読み込む</button>
     </div>
   </dialog>
   <script src="./app.js" type="module"></script>

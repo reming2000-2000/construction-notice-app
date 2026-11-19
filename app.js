@@ -3,6 +3,7 @@ import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
   layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput,
   additionalOptions, canSelectNotice, selectAdditionalNotice,
+  noticeTitle, noticeWarnings, contactFields, exportCase, importCase, maxCaseBytes,
 } from './notice.js';
 import { loadWordTemplate, createWord } from './word.js';
 
@@ -13,11 +14,14 @@ const modes = { short: '短期工事', long: '長期工事' };
 let exporting = false;
 let pendingReview = null;
 let pendingMode = '';
+let pendingCase = null;
+let caseRead = 0;
 let layoutFrame;
 let textWarnings = [];
 const printMedia = window.matchMedia('print');
 const choices = [];
 const ruleInputs = $$('input[name="vehicleMode"], input[name="restrictionMode"]');
+const titleInput = $('[data-field="title"]');
 
 function putText(id, text) {
   const node = document.getElementById(id);
@@ -110,9 +114,10 @@ function updateNoticeChoices(draft, payload) {
     input.checked = !input.disabled && draft.selectedNotices.includes(option.id);
     detail.hidden = !input.checked;
     if (preview) {
-      preview.textContent = payload.notes.find(note => note.optionId === option.id)?.text ??
-        (option.id === 'resume' && payload.vehicleSummary.resume === '要入力'
-          ? '利用再開の日時を指定してください。' : '');
+      const message = payload.notes.find(note => note.optionId === option.id)?.text;
+      preview.textContent = message || (option.id === 'resume' && payload.vehicleSummary.resume === '要入力'
+        ? '利用再開の日時を指定してください。' : '');
+      preview.hidden = !input.checked || !preview.textContent;
     }
     if (help && option.id !== 'parking') {
       help.hidden = !input.disabled;
@@ -240,16 +245,24 @@ function initNoticeChoices() {
       input.setAttribute('aria-describedby', help.id);
       row.append(help);
     }
-    let editor, preview;
+    let editor;
     let detail;
+    const preview = document.createElement('p');
+    preview.className = 'help preset-detail preset-preview';
+    row.append(preview);
     if (text) {
-      detail = document.createElement('label');
-      detail.className = 'field preset-detail';
+      detail = document.createElement('details');
+      detail.className = 'editor-details preset-detail';
+      const summary = document.createElement('summary');
+      summary.textContent = '定型文を個別に編集';
+      const field = document.createElement('label');
+      field.className = 'field';
       const instruction = document.createElement('span');
       instruction.textContent = '掲載文（この案内のみ編集可）';
       editor = document.createElement('textarea');
       editor.rows = 2;
       editor.dataset.presetText = id;
+      editor.id = `preset-text-${id}`;
       editor.setAttribute('aria-label', `${label}の掲載文`);
       editor.addEventListener('input', () => {
         const overrides = drafts[mode].noticeOverrides;
@@ -260,12 +273,12 @@ function initNoticeChoices() {
       editor.addEventListener('blur', () => {
         if (!editor.value.trim()) editor.value = text;
       });
-      detail.append(instruction, editor);
+      field.append(instruction, editor);
+      detail.append(summary, field);
     } else {
-      detail = preview = document.createElement('p');
-      detail.className = 'help preset-detail';
+      detail = preview;
     }
-    row.append(detail);
+    if (detail !== preview) row.append(detail);
     input.addEventListener('change', () => {
       selectAdditionalNotice(drafts[mode], id, input.checked);
       updateNotes();
@@ -353,6 +366,7 @@ function renderNoteEditors() {
     include.nextElementSibling.textContent = `${label}を載せる`;
     include.checked = note.enabled;
     editor.value = note.text;
+    editor.id = `free-note-${index}`;
     editor.setAttribute('aria-label', label);
     remove.setAttribute('aria-label', `${label}を削除`);
     register.setAttribute('aria-label', `${label}を文例に登録`);
@@ -442,6 +456,14 @@ function render() {
   renderNotes(payload);
 
   const errors = validate(mode, draft);
+  const manualTitle = draft.titleMode === 'manual';
+  titleInput.readOnly = !manualTitle;
+  titleInput.required = manualTitle;
+  if (!manualTitle) titleInput.value = noticeTitle(draft);
+  putText('titleModeButton', manualTitle ? '自動生成に戻す' : 'タイトルを手動で編集');
+  const titleError = errors.has('title');
+  putText('titleDetailStatus', titleError ? '要入力' : manualTitle ? '手動' : '自動');
+  $('#titleDetailStatus').classList.toggle('needs-attention', titleError);
   for (const input of ruleInputs) {
     const error = errors.get(input.name);
     const errorId = `${input.name}Error`;
@@ -451,7 +473,22 @@ function render() {
     if (error) input.setAttribute('aria-describedby', errorId);
     else input.removeAttribute('aria-describedby');
   }
-  textWarnings = [...errors.values(), ...layoutWarnings(mode, draft, payload)];
+  const conflicts = noticeWarnings(payload);
+  const summaries = [
+    ['otherNoticeStatus', choices.filter(({ option, input }) => option.group === 'other' && input.checked).length,
+      '選択中', conflicts.some(({ note }) => choices.some(({ option }) => option.id === note.optionId && option.group === 'other'))],
+    ['freeNoticeStatus', payload.notes.filter(note => Number.isInteger(note.freeIndex)).length,
+      '掲載', conflicts.some(({ note }) => Number.isInteger(note.freeIndex))],
+  ];
+  for (const [id, count, label, warning] of summaries) {
+    putText(id, [count ? `${count}件${label}` : '', warning ? '要確認' : ''].filter(Boolean).join('・'));
+    $('#' + id).classList.toggle('needs-attention', warning);
+  }
+  textWarnings = [
+    ...[...errors].map(([field, message]) => ({ field, message })),
+    ...conflictItems(conflicts),
+    ...layoutWarnings(mode, draft, payload).map(message => ({ message })),
+  ];
   renderFieldErrors(errors);
   updateButtons(errors.size > 0);
   scheduleScale();
@@ -514,8 +551,10 @@ function scalePreview() {
   const warnings = previewWarnings(textWarnings);
   const box = $('#warningBox');
   box.hidden = warnings.length === 0;
-  if ([...box.children].map(item => item.textContent).join('\n') !== warnings.join('\n')) {
-    box.replaceChildren(...listItems(warnings));
+  const signature = JSON.stringify(warnings);
+  if (box.dataset.signature !== signature) {
+    box.dataset.signature = signature;
+    box.replaceChildren(...warningItems(warnings));
   }
   putText('previewStatus', warnings.length ? `${warnings.length}件の確認項目` : '入力内容を確認できます');
 }
@@ -528,7 +567,7 @@ function previewOverflows() {
 function previewWarnings(messages) {
   const warnings = [...messages];
   if (previewOverflows()) {
-    warnings.push('A4の1ページを超えています。印刷とWordで改ページを確認してください。');
+    warnings.push({ message: 'A4の1ページを超えています。印刷とWordで改ページを確認してください。' });
   }
   return warnings;
 }
@@ -538,6 +577,47 @@ function listItems(items) {
     const line = document.createElement('li');
     line.textContent = item;
     return line;
+  });
+}
+
+function conflictItems(conflicts) {
+  return conflicts.map(({ note, message }) => {
+    if (Number.isInteger(note.freeIndex)) {
+      return { target: `free-note-${note.freeIndex}`, message: `注意書き${note.freeIndex + 1}の確認。 ${message}` };
+    }
+    const option = additionalOptions.find(({ id }) => id === note.optionId);
+    return { target: `preset-text-${option.id}`, message: `「${option.label}」の確認。 ${message}` };
+  });
+}
+
+function focusInput(input) {
+  for (let node = input?.parentElement; node; node = node.parentElement) {
+    if (node.tagName === 'DETAILS') node.open = true;
+  }
+  if (input?.hasAttribute('data-time-select') && !timeEditor(input).hidden) input = timeEditor(input);
+  input?.focus();
+}
+
+function warningItems(items) {
+  return items.map(({ field, target, message }) => {
+    const row = document.createElement('li');
+    row.textContent = message;
+    if (field || target) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'warning-link';
+      button.textContent = '入力欄へ';
+      button.setAttribute('aria-label', `${message} 入力欄へ`);
+      button.addEventListener('click', () => {
+        if ($('#distributionDialog').open) closeDistributionReview();
+        const input = target ? document.getElementById(target) :
+          $$('[data-field]').find(node => node.dataset.field === field && inputMode(node) === mode) ||
+          ruleInputs.find(node => node.name === field);
+        focusInput(input);
+      });
+      row.append(' ', button);
+    }
+    return row;
   });
 }
 
@@ -561,9 +641,12 @@ function openDistributionReview(format) {
   putText('reviewContact', payload.values.contact);
   putText('reviewConfirmButton', format === 'word' ? '確認してWordを出力' : '確認して印刷画面を開く');
 
-  const warnings = previewWarnings(layoutWarnings(mode, draft, payload));
+  const warnings = previewWarnings([
+    ...conflictItems(noticeWarnings(payload)),
+    ...layoutWarnings(mode, draft, payload).map(message => ({ message })),
+  ]);
   const list = $('#reviewWarnings');
-  list.replaceChildren(...listItems(warnings));
+  list.replaceChildren(...warningItems(warnings));
   list.hidden = warnings.length === 0;
 
   pendingReview = { format, kind: mode, payload, filename: wordFilename(draft), draft: JSON.stringify(draft) };
@@ -598,15 +681,7 @@ async function downloadWord({ kind, payload, filename }) {
   showExportStatus();
   try {
     const template = await loadWordTemplate(kind);
-    const blob = createWord(template, payload);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    downloadFile(createWord(template, payload), filename);
     showExportStatus(`${modes[kind]}のWordを作成しました。`);
   } catch {
     showExportStatus('Wordを作成できませんでした。ページを再読み込みして、配布サイトまたはローカルサーバーから開き直してください。', true);
@@ -614,6 +689,74 @@ async function downloadWord({ kind, payload, filename }) {
     exporting = false;
     updateButtons();
   }
+}
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+function showCaseStatus(message = '') {
+  $('#caseStatus').hidden = !message;
+  putText('caseStatus', message);
+}
+
+function saveCase() {
+  const { text, filename } = exportCase(mode, drafts[mode]);
+  const file = new Blob([text], { type: 'application/json' });
+  if (file.size > maxCaseBytes) {
+    showCaseStatus('案件データが大きすぎます。自由入力などを短くしてから保存してください。');
+    return;
+  }
+  downloadFile(file, filename);
+  showCaseStatus('入力中の案件をJSONファイルに保存しました。');
+}
+
+async function readCase(file) {
+  const request = ++caseRead;
+  showCaseStatus();
+  if (file.size > maxCaseBytes) {
+    showCaseStatus('1 MB以下の案件ファイルを選択してください。');
+    return;
+  }
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    if (request === caseRead) showCaseStatus('ファイルを読み込めませんでした。');
+    return;
+  }
+  if (request !== caseRead) return;
+  try {
+    pendingCase = importCase(text);
+  } catch (error) {
+    showCaseStatus(error.message);
+    return;
+  }
+  const { mode: target, draft } = pendingCase;
+  const previousName = drafts[target].propertyName.trim();
+  putText('caseDescription', `読み込むと、${modes[target]}の現在の入力${previousName ? `「${previousName}」` : ''}が置き換わります。`);
+  putText('caseMode', modes[target]);
+  putText('caseProperty', draft.propertyName || '未入力');
+  putText('caseWork', draft.workDescription || '未入力');
+  putText('caseNoticeTitle', noticeTitle(draft) || '未入力');
+  $('#caseDialog').showModal();
+}
+
+function finishCase(confirmed) {
+  const next = pendingCase;
+  pendingCase = null;
+  $('#caseDialog').close();
+  if (!confirmed || !next) return;
+  mode = next.mode;
+  replaceDraft(next.draft);
+  showCaseStatus(`${modes[mode]}の案件を読み込みました。`);
 }
 
 function replaceDraft(next) {
@@ -669,6 +812,19 @@ function init() {
     updateNotes();
   });
   initNoticeChoices();
+  $('#titleModeButton').onclick = () => {
+    const draft = drafts[mode];
+    if (draft.titleMode === 'manual') {
+      draft.titleMode = 'auto';
+    } else {
+      const title = noticeTitle(draft);
+      draft.titleMode = 'manual';
+      titleInput.value = draft.title ||= title;
+    }
+    render();
+    saveDrafts();
+    if (!titleInput.readOnly) titleInput.focus();
+  };
   $('#addNoteButton').onclick = () => {
     drafts[mode].additionalNotes.push({ text: '', enabled: true });
     renderNoteEditors();
@@ -687,8 +843,23 @@ function init() {
     }
   };
   $('#clearButton').onclick = () => {
-    if (confirm(`現在の${modes[mode]}の入力を初期化しますか？`)) replaceDraft(createDraft(mode));
+    if (confirm(`現在の${modes[mode]}の入力を初期化しますか？施工会社・連絡先は引き継ぎます。`)) {
+      const next = createDraft(mode);
+      for (const key of contactFields) next[key] = drafts[mode][key];
+      replaceDraft(next);
+    }
   };
+  $('#saveCaseButton').onclick = saveCase;
+  const fileInput = $('#caseFile');
+  $('#loadCaseButton').onclick = () => fileInput.click();
+  fileInput.addEventListener('change', () => {
+    const [file] = fileInput.files;
+    fileInput.value = '';
+    if (file) void readCase(file);
+  });
+  $('#cancelCaseButton').onclick = () => finishCase(false);
+  $('#confirmCaseButton').onclick = () => finishCase(true);
+  $('#caseDialog').addEventListener('cancel', () => { pendingCase = null; });
   $('#pdfButton').onclick = () => openDistributionReview('print');
   $('#wordButton').onclick = () => openDistributionReview('word');
   $('#reviewBackButton').onclick = closeDistributionReview;
