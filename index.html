@@ -63,15 +63,13 @@
         </fieldset>
         <fieldset>
           <legend>車両の扱い・利用制限</legend>
-          <label class="field">
-            <span>車両の扱い <em>必須</em></span>
-            <select id="vehicleMode" data-field="vehicleMode" required>
-              <option value="">選択してください</option>
-              <option value="stay">車を停めたままでよい</option>
-              <option value="leave">事前に車を出す必要がある</option>
-              <option value="unrestricted">制限なし（通常どおり使える）</option>
-            </select>
-          </label>
+          <div class="choice-group field" role="radiogroup" aria-label="車両の扱い">
+            <b>車両の扱い <em>必須</em></b>
+            <label class="choice-row"><input type="radio" name="vehicleMode" value="leave" required /><span>事前に車を出す必要がある</span></label>
+            <label class="choice-row"><input type="radio" name="vehicleMode" value="stay" required /><span>車を停めたままでよい（入出庫の停止あり）</span></label>
+            <label class="choice-row"><input type="radio" name="vehicleMode" value="unrestricted" required /><span>制限なし（通常どおり使える）</span></label>
+            <p id="vehicleModeError" class="field-error" hidden></p>
+          </div>
           <div class="field-grid conditional-fields" id="deadlineFields" hidden>
             <label class="field"><span>出庫期限日 <em>必須</em></span><input type="date" data-field="deadlineDate" required /></label>
             <div class="field time-field">
@@ -137,18 +135,29 @@
           <p class="help legacy-note" id="legacyVehicleNotes" hidden></p>
         </fieldset>
         <fieldset data-modeonly="short">
-          <legend>作業場所・補足</legend>
-          <label class="field"><span>作業場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
-          <label class="field"><span>日時・車両の扱い以外の補足（任意）</span><input type="text" data-field="notice2Detail" maxlength="100" placeholder="例：緊急時は管理室へご連絡ください" /></label>
+          <legend>作業場所（任意）</legend>
+          <label class="field"><span>号機・場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
         </fieldset>
-        <fieldset data-modeonly="long" hidden>
-          <legend>そのほかの注意事項（任意）</legend>
-          <p class="help">案内文に載せる項目を選び、本文を編集できます。</p>
-          <div id="longNotes">
-            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice4" /> 鍵・説明書の更新</label><input aria-label="鍵・説明書の更新の本文" data-field="notice4" type="text" maxlength="110" /></div>
-            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice5" /> 鍵・説明書の配布予定</label><input aria-label="鍵・説明書の配布予定の本文" data-field="notice5" type="text" maxlength="110" /></div>
-            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice6" /> 代替駐車場の案内</label><input aria-label="代替駐車場の案内の本文" data-field="notice6" type="text" maxlength="110" /></div>
-          </div>
+        <fieldset>
+          <legend>注意書き（任意）</legend>
+          <p class="help">載せたい文例を選ぶと、下の欄に追加されます。文面は案内に合わせて編集できます。</p>
+          <div id="noteChoices"></div>
+          <button id="addNoteButton" class="button secondary" type="button">自由入力の注意書きを追加</button>
+          <p class="help note-storage">「文例に登録」で、次回もこのブラウザから選べます。</p>
+          <p id="noteStatus" class="help" role="status" hidden></p>
+          <div id="noteEditors"></div>
+          <template id="noteEditorTemplate">
+            <div class="note-line">
+              <div class="note-actions">
+                <label><input type="checkbox" data-include-note /> <span></span></label>
+                <div class="note-editor-buttons">
+                  <button class="button" type="button" data-save-example>文例に登録</button>
+                  <button class="button" type="button" data-delete-note>削除</button>
+                </div>
+              </div>
+              <textarea rows="2" data-note-text placeholder="例：作業中は騒音が発生する場合があります。"></textarea>
+            </div>
+          </template>
         </fieldset>
         <fieldset>
           <legend>施工会社・お問い合わせ</legend>
@@ -189,7 +198,6 @@
               <div class="part-label">【工事期間】</div>
               <div class="big-date"><span id="vMainDate"></span></div>
               <div class="big-time"><span id="vTimeRange"></span></div>
-              <div class="resume" id="vResumeLine" hidden><span id="vResume"></span></div>
               <div class="work-section" id="vWorkSection">
                 <div class="part-label" id="vWorkLabel">【作業場所】</div>
                 <div class="work-place"><span id="vWorkPlace"></span></div>
@@ -243,6 +251,10 @@
       <div>
         <dt>利用再開予定</dt>
         <dd id="reviewResume"></dd>
+      </div>
+      <div id="reviewNotesRow" hidden>
+        <dt>追加の注意書き</dt>
+        <dd><ul id="reviewNotes"></ul></dd>
       </div>
       <div>
         <dt>連絡先</dt>

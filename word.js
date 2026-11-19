@@ -27,9 +27,8 @@ export async function loadWordTemplate(mode) {
   return templates.get(mode);
 }
 
-function growOutline(document, extraLines) {
-  // Keep the template's work frame, including its legacy Word fallback.
-  // Only extend the bottom edge for work text that needs over two lines.
+function resizeOutline(document, extraLines) {
+  // Adjust the same work frame in both the modern and legacy Word drawings.
   const outline = document.getElementsByTagNameNS(MC, 'AlternateContent')[1];
   const expansion = extraLines * 17.9;
   for (const [namespace, name] of [[WP, 'extent'], [A, 'ext']]) {
@@ -40,6 +39,28 @@ function growOutline(document, extraLines) {
   const rectangle = outline.getElementsByTagNameNS(VML, 'roundrect')[0];
   rectangle.setAttribute('style', rectangle.getAttribute('style')
     .replace(/height:([\d.]+)pt/, (_, height) => `height:${(Number(height) + expansion).toFixed(2)}pt`));
+}
+
+function removeBetween(first, last) {
+  while (first.nextElementSibling && first.nextElementSibling !== last) {
+    first.nextElementSibling.remove();
+  }
+}
+
+function spacing(paragraph) {
+  return paragraph.firstElementChild.getElementsByTagNameNS(W, 'spacing')[0];
+}
+
+function setRunText(field, value) {
+  const [first, ...lines] = value.split('\n');
+  field.textContent = first;
+  let last = field;
+  for (const line of lines) {
+    const next = field.cloneNode(false);
+    next.textContent = line;
+    last.after(field.ownerDocument.createElementNS(W, 'w:br'), next);
+    last = next;
+  }
 }
 
 export function fillDocument(templateXml, payload) {
@@ -54,26 +75,64 @@ export function fillDocument(templateXml, payload) {
     const match = /^@@(\w+)@@$/.exec(text.textContent);
     if (match) fields.set(match[1], text);
   }
-  const { values, mode, notes, fullEnd, compactStart, extraOutlineLines } = payload;
+  const { values, mode, notes, fullEnd, compactStart, compactSchedule, extraOutlineLines } = payload;
   if (fields.size !== Object.keys(values).length || [...fields.keys()].some(key => !Object.hasOwn(values, key))) {
     throw new Error('テンプレートの差し込み欄が一致しません。');
   }
 
   const paragraph = key => fields.get(key).parentNode.parentNode;
-  const optional = ['notesHeading', ...Object.keys(values).filter(key => /^notice[1-6]$/.test(key))];
-  if (mode === 'short') optional.push('notice2Detail');
+  const notesHeading = paragraph('notesHeading');
+  const contactHeading = paragraph('contact').previousElementSibling;
+  const extraNoteStyle = paragraph(mode === 'short' ? 'notice2Detail' : 'notice5').cloneNode(true);
+  const extraIndent = extraNoteStyle.firstElementChild.getElementsByTagNameNS(W, 'ind')[0];
+  extraIndent.removeAttributeNS(W, 'firstLine');
+  extraIndent.setAttributeNS(W, 'w:left', '240');
+  extraIndent.setAttributeNS(W, 'w:hanging', '240');
+
+  if (compactSchedule) {
+    const scheduleHeading = paragraph('mainDate').previousElementSibling;
+    // Delete the old floating frame and the paragraphs reserved for its padding and work location.
+    removeBetween(paragraph('closure').nextElementSibling, scheduleHeading);
+    removeBetween(paragraph('timeRange'), notesHeading);
+    spacing(scheduleHeading).setAttributeNS(W, 'w:before', '420');
+    spacing(notesHeading).setAttributeNS(W, 'w:before', '280');
+  } else if (mode === 'long') {
+    // Reopening is explained with the vehicle rules, leaving one fewer line inside the frame.
+    resizeOutline(document, extraOutlineLines - 1);
+  }
+  spacing(notesHeading).setAttributeNS(W, 'w:after', '120');
+  spacing(contactHeading).setAttributeNS(W, 'w:before', '400');
+
+  const optional = ['recipient', 'notesHeading', ...Object.keys(values).filter(key => /^notice[1-6]$/.test(key))];
+  optional.push(mode === 'short' ? 'notice2Detail' : 'resume');
   for (const key of optional) {
     if (!values[key]) paragraph(key).remove();
   }
-  for (const { key, gapAfter } of notes) {
-    if (gapAfter) {
-      const spacing = paragraph(key).getElementsByTagNameNS(W, 'spacing')[0];
-      spacing.setAttributeNS(W, 'w:after', String(gapAfter * 20));
+  for (const [index, note] of notes.entries()) {
+    const line = note.additional ? extraNoteStyle.cloneNode(true) : paragraph(note.key);
+    const next = notes[index + 1];
+    // Use the same CJK face as the preview for the new Japanese paragraphs.
+    // The template's Meiryo fallback can drop glyphs around punctuation in Writer.
+    for (const font of line.getElementsByTagNameNS(W, 'rFonts')) {
+      for (const script of ['ascii', 'hAnsi', 'eastAsia', 'cs']) {
+        font.setAttributeNS(W, 'w:' + script, 'Noto Sans CJK JP');
+      }
     }
-  }
-  if (!notes.length) {
-    const contactHeading = paragraph('contact').previousElementSibling;
-    contactHeading.getElementsByTagNameNS(W, 'spacing')[0].setAttributeNS(W, 'w:before', '358');
+    const lineSpacing = spacing(line);
+    lineSpacing.setAttributeNS(W, 'w:line', '320');
+    if (next) lineSpacing.setAttributeNS(W, 'w:after', '80');
+    if (note.additional) {
+      setRunText(line.getElementsByTagNameNS(W, 't')[0], `・${note.text}`);
+      contactHeading.before(line);
+    } else {
+      const props = line.firstElementChild;
+      props.getElementsByTagNameNS(W, 'ind')[0]?.remove();
+      const color = fields.get(note.key).parentNode.getElementsByTagNameNS(W, 'color')[0];
+      if (!note.red) color?.setAttributeNS(W, 'w:val', '000000');
+      if (next && !next.additional) {
+        props.insertBefore(document.createElementNS(W, 'w:keepNext'), props.getElementsByTagNameNS(W, 'keepLines')[0]);
+      }
+    }
   }
   if (fullEnd) {
     // A year change needs the full end date; use the start line's original indent.
@@ -86,18 +145,8 @@ export function fillDocument(templateXml, payload) {
     width.setAttributeNS(W, 'w:val', '92');
     runProperties.insertBefore(width, runProperties.getElementsByTagNameNS(W, 'sz')[0]);
   }
-  if (extraOutlineLines) growOutline(document, extraOutlineLines);
   for (const [key, field] of fields) {
-    const [first, ...lines] = values[key].split('\n');
-    // Keep wrapped dates on separate lines inside the original styled run.
-    field.textContent = first;
-    let last = field;
-    for (const line of lines) {
-      const next = field.cloneNode(false);
-      next.textContent = line;
-      last.after(document.createElementNS(W, 'w:br'), next);
-      last = next;
-    }
+    setRunText(field, values[key]);
   }
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     new XMLSerializer().serializeToString(document.documentElement);

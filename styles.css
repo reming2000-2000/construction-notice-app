@@ -7,7 +7,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
 [hidden] { display: none !important; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { opacity: .55; cursor: not-allowed; }
 
@@ -83,7 +83,7 @@ legend {
 .time-entry { display: grid; gap: 6px; }
 .field span { font-size: 12px; color: #475971; font-weight: 700; }
 .field em { font-size: 10px; font-style: normal; color: #a12929; margin-left: 4px; }
-.field input, .field select, .note-line input[type="text"] {
+.field input:not([type="radio"]), .field select, .note-line textarea {
   width: 100%;
   min-width: 0;
   background: #fff;
@@ -93,7 +93,7 @@ legend {
   font-size: 12px;
   padding: 10px 9px;
 }
-.field input:focus, .field select:focus, .note-line input[type="text"]:focus {
+.field input:focus, .field select:focus, .note-line textarea:focus {
   border-color: #3e72b4;
   outline: 2px solid #dbe9fb;
 }
@@ -103,10 +103,40 @@ legend {
 .help, .privacy { font-size: 11px; color: #536077; line-height: 1.65; margin: 0 0 12px; }
 .field-grid + .help { margin-top: 9px; }
 .legacy-note { padding: 8px 10px; border-radius: 6px; background: #fff9ec; color: #6c4c15; white-space: pre-line; overflow-wrap: anywhere; }
+.choice-group { margin-bottom: 12px; }
+.choice-group b, .note-category h3 { margin: 0; color: #3d536c; font-size: 12px; }
+.choice-group .field-error { margin: 0; }
+.choice-row {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #cdd7e5;
+  border-radius: 7px;
+  background: #fff;
+  color: #253d58;
+  font-size: 12px;
+  line-height: 1.55;
+  cursor: pointer;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.choice-row:hover { border-color: #7293bd; }
+.choice-row:has(:checked) { background: #eaf2ff; border-color: #567fb3; }
+.choice-row:has(:focus-visible) { outline: 2px solid #2456a0; outline-offset: 2px; }
+.choice-row input { flex: none; margin: 3px 0 0; accent-color: #2456a0; }
+.note-category { display: grid; gap: 6px; margin-bottom: 12px; }
+.example-row { display: flex; gap: 6px; }
+.example-row .choice-row { flex: 1; min-width: 0; }
+.example-row button { flex: none; align-self: start; }
+.note-storage { margin-top: 6px; }
+.note-actions, .note-editor-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.note-actions { justify-content: space-between; }
 .note-line { display: grid; gap: 6px; margin: 0 0 13px; }
 .note-line label { display: flex; align-items: center; gap: 6px; color: #536077; font-size: 11px; font-weight: 700; }
 .note-line input[type="checkbox"] { accent-color: #2456a0; }
-.note-line:has(input[type="checkbox"]:not(:checked)) input[type="text"] { background: #f3f5f8; }
+.note-line textarea { resize: vertical; }
+.note-line:has(input[type="checkbox"]:not(:checked)) textarea { background: #f3f5f8; }
 .privacy { border-top: 1px solid #e4e9f0; padding-top: 14px; }
 
 .preview-panel { min-width: 0; padding: 20px 16px 27px; }
@@ -156,6 +186,7 @@ legend {
 .review-summary > div + div { border-top: 1px solid #dce2eb; }
 .review-summary dt { color: #3c5570; font-weight: 600; }
 .review-summary dd { margin: 0; font-weight: 700; white-space: pre-line; overflow-wrap: anywhere; }
+#reviewNotes { margin: 0; padding-inline-start: 1.25em; }
 .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .dialog-actions button:focus-visible { outline: 2px solid #2456a0; outline-offset: 2px; }
 .paper-scroller { display: flex; justify-content: center; align-items: flex-start; min-width: 0; overflow: hidden; }
@@ -218,6 +249,8 @@ legend {
   border-radius: 12mm;
   padding: 6.6mm 14.7mm 9mm 12.1mm;
 }
+.paper.long .outline-box { min-height: 64.3mm; }
+.paper.compact-schedule .outline-box { min-height: 0; margin: 7.4mm 25mm 0; padding: 0; border: 0; }
 .part-label { font-size: 14pt; line-height: 17pt; }
 .big-date, .big-time {
   margin-left: 7.65mm;
@@ -234,12 +267,11 @@ legend {
   transform: scaleX(.92);
   transform-origin: center left;
 }
-.big-date > span, .big-time > span, .resume > span, .work-place > span { background: #ff0; }
-.notice-title > span, .big-date > span, .big-time > span, .resume > span, .work-place > span {
+.big-date > span, .big-time > span, .work-place > span { background: #ff0; }
+.notice-title > span, .big-date > span, .big-time > span, .work-place > span {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-.resume { color: red; font-size: 12pt; text-align: right; line-height: 16.5pt; }
 .work-section { margin-top: 11.3mm; }
 .paper.long .work-section { margin-top: 5.6mm; }
 .work-place { margin-left: 9.9mm; color: red; font-size: 16pt; font-weight: bold; line-height: 18pt; }
@@ -247,19 +279,14 @@ legend {
 .paper.long .work-place > span { background: transparent; }
 
 .notes-section { margin: 5mm 25mm 0; }
-.notes-section > .part-label { margin-bottom: 10pt; }
-.notice-line { font-size: 14pt; line-height: 16pt; font-weight: bold; }
+.notes-section > .part-label { margin-bottom: 6pt; }
+.notice-line { font-family: "Noto Sans CJK JP", Meiryo, "Yu Gothic", sans-serif; font-size: 14pt; line-height: 16pt; font-weight: bold; }
+.notice-line + .notice-line { margin-top: 4pt; }
 .notice-line.red { color: #e00; }
-.notice-body { display: flex; }
-.diamond { flex: 0 0 13pt; }
 .note-text { min-width: 0; white-space: pre-line; }
-.secondary-note { font-size: 12pt; font-weight: normal; padding-inline-start: 13pt; }
-.note-detail { color: #111; padding-inline-start: 13.6pt; font-size: 12pt; line-height: 16pt; font-weight: normal; }
-.notice-line[data-gap="15"] { margin-bottom: 15pt; }
-.notice-line[data-gap="30"] { margin-bottom: 30pt; }
-.contact { margin: 47.9pt 25mm 0; font-size: 9pt; }
-.paper.long .contact { margin-top: 32.9pt; }
-.paper .notes-section[hidden] + .contact { margin-top: 17.9pt; }
+.note-detail, .extra-note { color: #111; font-size: 12pt; font-weight: normal; }
+.extra-note { display: flex; gap: 2pt; }
+.contact { margin: 20pt 25mm 0; font-size: 9pt; }
 .contact > :last-child { padding-inline-start: 10.6pt; }
 .preview-foot { font-size: 11px; color: #536077; line-height: 1.5; max-width: 812px; margin: 12px auto 0; }
 
@@ -304,4 +331,5 @@ legend {
   }
   .letterhead, .notice-title, .outline-box, .notice-line, .contact { break-inside: avoid; }
   .notice-title, .notes-section > .part-label { break-after: avoid; }
+  .notice-line:not(.extra-note):has(+ .notice-line:not(.extra-note)) { break-after: avoid; }
 }

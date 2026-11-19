@@ -1,7 +1,7 @@
 /* Static browser app. The preview, browser print and Word share one notice payload. */
 import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
-  layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput,
+  layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput, noteExamples,
 } from './notice.js';
 import { loadWordTemplate, createWord } from './word.js';
 
@@ -33,20 +33,23 @@ function loadDraftState() {
       drafts: restoreDrafts(saved),
       mode: saved?.mode === 'long' ? 'long' : 'short',
       linked: saved?.linked === true,
+      savedExamples: Array.isArray(saved?.savedExamples) ? saved.savedExamples.filter(example =>
+        typeof example?.id === 'string' && example.id.startsWith('custom-') &&
+        typeof example?.text === 'string' && example.text.trim()) : [],
     };
   } catch {
     storageWarning();
-    return { drafts: restoreDrafts(null), mode: 'short', linked: false };
+    return { drafts: restoreDrafts(null), mode: 'short', linked: false, savedExamples: [] };
   }
 }
 
 const initialState = loadDraftState();
-const { drafts } = initialState;
+const { drafts, savedExamples } = initialState;
 let { mode, linked } = initialState;
 
 function saveDrafts() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify({ ...drafts, mode, linked }));
+    localStorage.setItem(storageKey, JSON.stringify({ ...drafts, mode, linked, savedExamples }));
     $('#storageStatus').hidden = true;
   } catch {
     storageWarning();
@@ -82,9 +85,10 @@ function updateForm() {
     if (input.hasAttribute('data-time-select')) setTimeField(input, value);
     else input.value = value;
   });
-  $$('[data-noteenabled]').forEach(input => {
-    input.checked = drafts.long.noteEnabled[input.dataset.noteenabled];
-  });
+  $$('input[name="vehicleMode"]').forEach(input => { input.checked = input.value === drafts[mode].vehicleMode; });
+  renderNoteChoices();
+  renderNoteEditors();
+  showNoteStatus();
   for (const key of Object.keys(modes)) {
     const button = $(`#${key}Button`);
     button.classList.toggle('active', mode === key);
@@ -164,35 +168,153 @@ function renderNotes(payload) {
   for (const note of payload.notes) {
     const row = document.createElement('div');
     row.className = 'notice-line';
-    row.classList.toggle('red', note.red);
-    row.classList.toggle('secondary-note', note.secondary);
-    row.dataset.notepreview = note.key;
-    row.dataset.gap = note.gapAfter;
-
-    const body = document.createElement('div');
-    body.className = 'notice-body';
-    if (!note.secondary) {
-      const diamond = document.createElement('span');
-      diamond.className = 'diamond';
-      diamond.textContent = '◆';
-      diamond.setAttribute('aria-hidden', 'true');
-      body.append(diamond);
+    row.classList.toggle('red', !!note.red);
+    row.classList.toggle('note-detail', !!note.detail);
+    row.classList.toggle('extra-note', !!note.additional);
+    if (note.additional) {
+      const bullet = document.createElement('span');
+      bullet.textContent = '・';
+      bullet.setAttribute('aria-hidden', 'true');
+      row.append(bullet);
     }
     const text = document.createElement('span');
     text.className = 'note-text';
     text.textContent = note.text;
-    body.append(text);
-    row.append(body);
-    if (note.detail) {
-      const detail = document.createElement('div');
-      detail.className = 'note-detail';
-      detail.textContent = note.detail;
-      row.append(detail);
-    }
+    row.append(text);
     list.append(row);
   }
   putText('vNotesHeading', payload.values.notesHeading);
   $('#vNotesSection').hidden = !payload.notes.length;
+}
+
+function updateNotes() {
+  if (!exporting) showExportStatus();
+  $$('[data-note-example]').forEach(input => {
+    input.checked = drafts[mode].additionalNotes.some(note => note.exampleId === input.value && note.enabled);
+  });
+  render();
+  saveDrafts();
+}
+
+function showNoteStatus(message = '') {
+  $('#noteStatus').hidden = !message;
+  putText('noteStatus', message);
+}
+
+function renderNoteChoices() {
+  const categories = new Map();
+  for (const example of [...noteExamples, ...savedExamples]) {
+    const category = example.category || '登録した文例';
+    if (!categories.has(category)) categories.set(category, []);
+    categories.get(category).push(example);
+  }
+  const list = $('#noteChoices');
+  list.replaceChildren();
+  for (const [category, examples] of categories) {
+    const group = document.createElement('div');
+    const heading = document.createElement('h3');
+    heading.textContent = category;
+    group.className = 'note-category';
+    group.append(heading);
+    for (const example of examples) {
+      const line = document.createElement('div');
+      line.className = 'example-row';
+      const label = document.createElement('label');
+      label.className = 'choice-row';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = example.id;
+      checkbox.dataset.noteExample = '';
+      const selected = drafts[mode].additionalNotes.find(note => note.exampleId === example.id);
+      checkbox.checked = !!selected?.enabled;
+      const text = document.createElement('span');
+      text.textContent = example.text;
+      label.append(checkbox, text);
+      line.append(label);
+      if (example.id.startsWith('custom-')) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'button';
+        remove.textContent = '登録解除';
+        remove.setAttribute('aria-label', `文例の登録解除「${example.text}」`);
+        remove.addEventListener('click', () => {
+          savedExamples.splice(savedExamples.indexOf(example), 1);
+          for (const draft of Object.values(drafts)) {
+            for (const note of draft.additionalNotes) {
+              if (note.exampleId === example.id) delete note.exampleId;
+            }
+          }
+          renderNoteChoices();
+          $('#addNoteButton').focus();
+          showNoteStatus('文例の登録を解除しました。入力中の案内には残ります。');
+          updateNotes();
+        });
+        line.append(remove);
+      }
+      checkbox.addEventListener('change', () => {
+        const notes = drafts[mode].additionalNotes;
+        const note = notes.find(item => item.exampleId === example.id);
+        if (note) note.enabled = checkbox.checked;
+        else notes.push({ exampleId: example.id, text: example.text, enabled: true });
+        renderNoteEditors();
+        updateNotes();
+      });
+      group.append(line);
+    }
+    list.append(group);
+  }
+}
+
+function renderNoteEditors() {
+  const list = $('#noteEditors');
+  const template = $('#noteEditorTemplate');
+  const notes = drafts[mode].additionalNotes;
+  list.replaceChildren(...notes.map((note, index) => {
+    const row = template.content.firstElementChild.cloneNode(true);
+    const label = `注意書き${index + 1}`;
+    const include = row.querySelector('[data-include-note]');
+    const editor = row.querySelector('[data-note-text]');
+    const remove = row.querySelector('[data-delete-note]');
+    const register = row.querySelector('[data-save-example]');
+    include.nextElementSibling.textContent = `${label}を載せる`;
+    include.checked = note.enabled;
+    editor.value = note.text;
+    editor.setAttribute('aria-label', label);
+    remove.setAttribute('aria-label', `${label}を削除`);
+    register.setAttribute('aria-label', `${label}を文例に登録`);
+    register.disabled = !note.text.trim();
+    register.addEventListener('click', () => {
+      const text = note.text.trim();
+      if (!text) return;
+      if ([...noteExamples, ...savedExamples].some(example => example.text === text)) {
+        showNoteStatus('同じ文例がすでにあります。');
+        return;
+      }
+      const example = { id: 'custom-' + crypto.randomUUID(), text };
+      savedExamples.push(example);
+      if (!note.exampleId) note.exampleId = example.id;
+      renderNoteChoices();
+      saveDrafts();
+      showNoteStatus('このブラウザに文例を登録しました。');
+    });
+    include.addEventListener('change', () => {
+      note.enabled = include.checked;
+      updateNotes();
+    });
+    editor.addEventListener('input', () => {
+      note.text = editor.value;
+      register.disabled = !note.text.trim();
+      updateNotes();
+    });
+    remove.addEventListener('click', () => {
+      notes.splice(index, 1);
+      renderNoteEditors();
+      const next = list.children[Math.min(index, notes.length - 1)];
+      (next?.querySelector('[data-note-text]') || $('#addNoteButton')).focus();
+      updateNotes();
+    });
+    return row;
+  }));
 }
 
 function render() {
@@ -205,8 +327,10 @@ function render() {
   paper.className = `paper ${mode}`;
   paper.classList.toggle('full-end', payload.fullEnd);
   paper.classList.toggle('date-compact', payload.compactStart);
+  paper.classList.toggle('compact-schedule', payload.compactSchedule);
   putText('vIssue', values.issue);
   putText('vRecipient', values.recipient);
+  $('#vRecipient').hidden = !values.recipient;
   putText('vIssuer', values.issuer);
   putText('vTitle', values.title);
   putText('vIntro', values.intro);
@@ -214,11 +338,9 @@ function render() {
   putText('vClosure', values.closure);
   putText('vMainDate', short ? values.mainDate : values.startLine);
   putText('vTimeRange', short ? values.timeRange : values.endLine);
-  putText('vResume', values.resume || '');
   putText('vWorkLabel', short ? values.locationLabel : '【作業内容】');
   putText('vWorkPlace', short ? values.location : values.workDescription);
   putText('vContact', values.contact);
-  $('#vResumeLine').hidden = short || !values.resume;
   $('#vIntroDate').hidden = !short;
   $('#vWorkSection').hidden = short && !values.location;
   $('#legacyResume').hidden = !draft.legacyResumeText;
@@ -232,6 +354,14 @@ function render() {
   renderNotes(payload);
 
   const errors = validate(mode, draft);
+  const vehicleError = errors.get('vehicleMode');
+  $('#vehicleModeError').hidden = !vehicleError;
+  putText('vehicleModeError', vehicleError || '');
+  $$('input[name="vehicleMode"]').forEach(input => {
+    input.setAttribute('aria-invalid', String(!!vehicleError));
+    if (vehicleError) input.setAttribute('aria-describedby', 'vehicleModeError');
+    else input.removeAttribute('aria-describedby');
+  });
   textWarnings = [...errors.values(), ...layoutWarnings(mode, draft, payload)];
   renderFieldErrors(errors);
   updateButtons(errors.size > 0);
@@ -293,7 +423,7 @@ function scalePreview() {
   const box = $('#warningBox');
   box.hidden = warnings.length === 0;
   if ([...box.children].map(item => item.textContent).join('\n') !== warnings.join('\n')) {
-    box.replaceChildren(...warningItems(warnings));
+    box.replaceChildren(...listItems(warnings));
   }
   putText('previewStatus', warnings.length ? `${warnings.length}件の確認項目` : '入力内容を確認できます');
 }
@@ -308,10 +438,10 @@ function previewWarnings(messages) {
   return warnings;
 }
 
-function warningItems(warnings) {
-  return warnings.map(warning => {
+function listItems(items) {
+  return items.map(item => {
     const line = document.createElement('li');
-    line.textContent = warning;
+    line.textContent = item;
     return line;
   });
 }
@@ -330,12 +460,15 @@ function openDistributionReview(format) {
   putText('reviewDeadline', deadline);
   putText('reviewRestriction', restriction);
   putText('reviewResume', resume);
+  const notes = payload.notes.filter(note => note.additional).map(note => note.text);
+  $('#reviewNotes').replaceChildren(...listItems(notes));
+  $('#reviewNotesRow').hidden = notes.length === 0;
   putText('reviewContact', payload.values.contact);
   putText('reviewConfirmButton', format === 'word' ? '確認してWordを出力' : '確認して印刷画面を開く');
 
   const warnings = previewWarnings(layoutWarnings(mode, draft, payload));
   const list = $('#reviewWarnings');
-  list.replaceChildren(...warningItems(warnings));
+  list.replaceChildren(...listItems(warnings));
   list.hidden = warnings.length === 0;
 
   pendingReview = { format, kind: mode, payload, filename: wordFilename(draft), draft: JSON.stringify(draft) };
@@ -432,12 +565,17 @@ function init() {
     if (input.hasAttribute('data-time-select')) initTimeField(input);
     else input.addEventListener('input', () => updateDraftField(input, input.value));
   });
-  $$('[data-noteenabled]').forEach(input => input.addEventListener('change', () => {
-    drafts.long.noteEnabled[input.dataset.noteenabled] = input.checked;
-    if (!exporting) showExportStatus();
-    render();
-    saveDrafts();
+  $$('input[name="vehicleMode"]').forEach(input => input.addEventListener('change', () => {
+    if (!input.checked) return;
+    drafts[mode].vehicleMode = input.value;
+    updateNotes();
   }));
+  $('#addNoteButton').onclick = () => {
+    drafts[mode].additionalNotes.push({ text: '', enabled: true });
+    renderNoteEditors();
+    $('#noteEditors').lastElementChild.querySelector('[data-note-text]').focus();
+    updateNotes();
+  };
   $('#shortButton').onclick = () => setMode('short');
   $('#longButton').onclick = () => setMode('long');
   $('#switchCarryButton').onclick = () => finishDraftSwitch('carry');
