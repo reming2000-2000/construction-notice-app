@@ -284,8 +284,6 @@ legend {
   font-weight: bold;
   line-height: 1.37;
 }
-.paper.long .big-time { margin-left: 46mm; }
-.paper.long.full-end .big-time { margin-left: 7.65mm; }
 .paper.date-compact .big-date > span {
   display: inline-block;
   white-space: nowrap;

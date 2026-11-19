@@ -559,8 +559,8 @@ export function noticePayload(mode, draft) {
       closure: notes.length
         ? '工事期間中のご利用については、下記の注意事項をご確認ください。'
         : '下記の工事期間・作業内容をご確認ください。',
-      startLine: `${date}　${startTime} ～`,
-      endLine: `${lastDay}　${endTime}`,
+      startLine: `${date} ${startTime} ～`,
+      endLine: `${lastDay} ${endTime}`,
       resume: '',
       workDescription: work,
     });

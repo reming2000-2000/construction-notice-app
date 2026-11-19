@@ -439,7 +439,6 @@ function render() {
   updateNoticeChoices(draft, payload);
   paper.classList.toggle('short', short);
   paper.classList.toggle('long', !short);
-  paper.classList.toggle('full-end', payload.fullEnd);
   paper.classList.toggle('date-compact', payload.compactStart);
   paper.classList.toggle('compact-schedule', payload.compactSchedule);
   putText('vIssue', values.issue);
