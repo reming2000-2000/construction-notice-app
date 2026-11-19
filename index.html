@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+  <meta name="description" content="機械式駐車場の工事案内文を、元のWordレイアウトを活かして作成するツール" />
+  <title>工事案内文 作成ツール</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand"><h1>工事案内文 作成ツール</h1></div>
+    <div class="actions">
+      <div class="mode-toggle" role="group" aria-label="案内の種類">
+        <button id="shortButton" class="active" type="button" aria-pressed="true">短期工事</button>
+        <button id="longButton" type="button" aria-pressed="false">長期工事</button>
+      </div>
+      <button id="sampleButton" class="button subtle" type="button">サンプル入力</button>
+      <button id="clearButton" class="button subtle" type="button">入力をクリア</button>
+      <button id="pdfButton" class="button secondary" type="button" disabled>PDF保存・印刷</button>
+      <button id="wordButton" class="button primary" type="button" disabled>Word出力 (.docx)</button>
+    </div>
+  </header>
+  <div class="shell">
+    <aside class="editor no-print" aria-label="工事案内文入力フォーム">
+      <form id="editorForm" autocomplete="off" novalidate>
+        <fieldset>
+          <legend>基本情報</legend>
+          <div class="field-grid">
+            <label class="field"><span>発行年月 <em>必須</em></span><input type="month" data-field="issueMonth" required /></label>
+            <label class="field"><span>宛名</span><input type="text" data-field="recipient" maxlength="40" placeholder="機械式駐車場 ご利用者 様" /></label>
+            <label class="field wide"><span>物件名 <em>必須</em></span><input type="text" data-field="propertyName" maxlength="80" placeholder="例：〇〇マンション" required /></label>
+            <label class="field wide"><span>案内文のタイトル <em>必須</em></span><input type="text" data-field="title" maxlength="52" required /></label>
+            <label class="field wide"><span>工事内容 <em>必須</em></span><input type="text" data-field="workDescription" maxlength="100" placeholder="例：油圧ポンプユニットの交換作業" required /></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>工事日時</legend>
+          <div class="field-grid">
+            <label class="field"><span>開始日 <em>必須</em></span><input type="date" data-field="startDate" required /></label>
+            <label class="field"><span>開始時刻 <em>必須</em></span><input type="time" data-field="startTime" required /></label>
+            <label class="field" data-modeonly="long" hidden><span>終了日 <em>必須</em></span><input type="date" data-field="endDate" required /></label>
+            <label class="field"><span>終了時刻 <em>必須</em></span><input type="time" data-field="endTime" required /></label>
+            <label class="field" data-modeonly="long" hidden><span>利用再開日</span><input type="date" data-field="resumeDate" /></label>
+            <label class="field" data-modeonly="long" hidden><span>利用再開時刻</span><input type="time" data-field="resumeTime" /></label>
+          </div>
+          <p class="help">曜日は日付から自動計算し、本文と工事期間欄に反映します。</p>
+          <p class="help" data-modeonly="long" hidden>利用再開日と時刻が両方空欄なら、工事終了日時を利用再開予定とします。</p>
+          <p class="help" id="legacyResume" hidden></p>
+        </fieldset>
+        <fieldset data-modeonly="short">
+          <legend>工事場所と車両の扱い</legend>
+          <label class="field"><span>作業場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
+          <label class="field"><span>車両の扱い</span>
+            <select id="vehicleMode" aria-label="車両の扱い">
+              <option value="stay">入庫したままでよい（出庫不可）</option>
+              <option value="leave">工事開始までに出庫が必要</option>
+              <option value="custom">注意事項を自由記述</option>
+            </select>
+          </label>
+          <p class="help">選択を変えると注意事項の文例が切り替わります。挿入された文例は編集できます。</p>
+          <label class="field"><span>注意事項①（赤字）</span><input type="text" data-field="notice1" maxlength="100" /></label>
+          <label class="field"><span>注意事項②（赤字）</span><input type="text" data-field="notice2" maxlength="100" /></label>
+          <label class="field"><span>注意事項②の補足（黒字）</span><input type="text" data-field="notice2Detail" maxlength="100" /></label>
+        </fieldset>
+        <fieldset data-modeonly="long" hidden>
+          <legend>長期工事の注意事項</legend>
+          <p class="help">案内文に載せる項目を選び、本文を編集できます。</p>
+          <div id="longNotes">
+            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice1" /> 事前出庫</label><input aria-label="事前出庫の本文" data-field="notice1" type="text" maxlength="110" /></div>
+            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice2" /> 工事期間中の駐車禁止</label><input aria-label="工事期間中の駐車禁止の本文" data-field="notice2" type="text" maxlength="110" /></div>
+            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice3" /> 昼夜の入出庫禁止</label><input aria-label="昼夜の入出庫禁止の本文" data-field="notice3" type="text" maxlength="110" /></div>
+            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice4" /> 鍵・説明書の更新</label><input aria-label="鍵・説明書の更新の本文" data-field="notice4" type="text" maxlength="110" /></div>
+            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice5" /> 鍵・説明書の配布予定</label><input aria-label="鍵・説明書の配布予定の本文" data-field="notice5" type="text" maxlength="110" /></div>
+            <div class="note-line"><label><input type="checkbox" data-noteenabled="notice6" /> 代替駐車場の案内</label><input aria-label="代替駐車場の案内の本文" data-field="notice6" type="text" maxlength="110" /></div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>施工会社・お問い合わせ</legend>
+          <div class="field-grid">
+            <label class="field wide"><span>施工会社名 <em>必須</em></span><input type="text" data-field="issuerName" maxlength="40" required /></label>
+            <label class="field"><span>担当者</span><input type="text" data-field="contactPerson" maxlength="30" placeholder="例：担当者名" /></label>
+            <label class="field"><span>電話番号 <em>必須</em></span><input type="tel" data-field="contactPhone" maxlength="30" placeholder="00-0000-0000" required /></label>
+            <label class="field wide"><span>受付時間</span><input type="text" data-field="contactHours" maxlength="55" /></label>
+          </div>
+        </fieldset>
+      </form>
+      <p class="privacy">下書きはこのブラウザに保存します。入力内容をサーバーに送信することはありません。</p>
+      <p class="help" id="storageStatus" role="status" hidden></p>
+    </aside>
+    <main class="preview-panel" aria-label="A4プレビュー">
+      <div class="preview-head no-print">
+        <div><strong>A4プレビュー</strong><span>画面・ブラウザ印刷は参考表示です。Wordとは改行やページ送りが異なることがあります。</span></div>
+        <div id="previewStatus" class="status" role="status"></div>
+      </div>
+      <ul id="warningBox" class="warnings no-print" aria-label="入力エラーと確認事項" hidden></ul>
+      <p id="exportStatus" class="export-status no-print" role="status" hidden></p>
+      <div class="paper-scroller" id="paperScroller">
+        <div id="paperHolder" class="paper-holder">
+          <article id="paper" class="paper short" aria-label="工事案内文プレビュー">
+            <div class="letterhead">
+              <div class="important">重要</div>
+              <div class="issue" id="vIssue"></div>
+              <div class="recipient" id="vRecipient"></div>
+              <div class="issuer" id="vIssuer"></div>
+            </div>
+            <div class="notice-title"><span id="vTitle"></span></div>
+            <div class="intro">
+              <p id="vIntro"></p><p id="vIntroDate"></p>
+              <p class="closure" id="vClosure"></p>
+              <p>ご迷惑をおかけしますが、何卒よろしくお願いいたします。</p>
+            </div>
+            <div class="outline-box">
+              <div class="part-label">【工事期間】</div>
+              <div class="big-date"><span id="vMainDate"></span></div>
+              <div class="big-time"><span id="vTimeRange"></span></div>
+              <div class="resume" id="vResumeLine" hidden><span id="vResume"></span></div>
+              <div class="work-section" id="vWorkSection">
+                <div class="part-label" id="vWorkLabel">【作業場所】</div>
+                <div class="work-place"><span id="vWorkPlace"></span></div>
+              </div>
+            </div>
+            <div class="notes-section" id="vNotesSection">
+              <div class="part-label" id="vNotesHeading"></div>
+              <div id="vNotes"></div>
+            </div>
+            <div class="contact"><div>＜工事業者＞</div><div id="vContact"></div></div>
+          </article>
+        </div>
+      </div>
+      <p class="preview-foot no-print">配布前に、工事日時と車両の扱いが一致しているか、Wordで注意事項とページの収まりを確認してください。</p>
+    </main>
+  </div>
+  <script src="./app.js" type="module"></script>
+</body>
+</html>
