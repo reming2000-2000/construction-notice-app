@@ -28,6 +28,18 @@ function putText(id, text) {
   if (node.textContent !== text) node.textContent = text;
 }
 
+function renderIntro(short, { values, introParts }) {
+  putText(short ? 'vIntro' : 'vIntroDate', short ? values.intro : '');
+  const dated = document.getElementById(short ? 'vIntroDate' : 'vIntro');
+  dated.replaceChildren(...introParts.map(({ text, red }) => {
+    if (!red) return document.createTextNode(text);
+    const date = document.createElement('span');
+    date.className = 'intro-date';
+    date.textContent = text;
+    return date;
+  }));
+}
+
 function storageWarning() {
   const status = $('#storageStatus');
   status.hidden = false;
@@ -435,8 +447,7 @@ function render() {
   $('#vRecipient').hidden = !values.recipient;
   putText('vIssuer', values.issuer);
   putText('vTitle', values.title);
-  putText('vIntro', values.intro);
-  putText('vIntroDate', values.introDate || '');
+  renderIntro(short, payload);
   putText('vClosure', values.closure);
   putText('vMainDate', short ? values.mainDate : values.startLine);
   putText('vTimeRange', short ? values.timeRange : values.endLine);

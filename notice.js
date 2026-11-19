@@ -512,6 +512,7 @@ export function noticePayload(mode, draft) {
   const end = mode === 'long' ? dateParts(draft.endDate) : start;
   const fullEnd = !!(start && end && start.year !== end.year);
   const date = dateLabel(start);
+  const lastDay = dateLabel(end, fullEnd);
   const startTime = timeLabel(draft.startTime);
   const endTime = timeLabel(draft.endTime);
   const property = cleanText(draft.propertyName) || '［物件名未入力］';
@@ -522,6 +523,12 @@ export function noticePayload(mode, draft) {
   const hours = cleanText(draft.contactHours);
   const workPeriod = workSpan(mode, draft);
   const { notes, summary } = collectNotes(mode, draft, workPeriod);
+  const introParts = [
+    { text: mode === 'long' ? `平素より${property}をご利用いただきありがとうございます。` : '', red: false },
+    { text: mode === 'long' ? `${date}～${lastDay}` : date, red: true },
+    { text: `に、「${work}」を行います。`, red: false },
+  ].filter(part => part.text);
+  const datedIntro = introParts.map(part => part.text).join('');
   const values = {
     issue: month ? `${fullWidth(draft.issueMonth.slice(0, 4))}年${fullWidth(month[1])}月吉日` : '［発行年月未入力］',
     recipient: cleanText(draft.recipient),
@@ -539,7 +546,7 @@ export function noticePayload(mode, draft) {
     const location = cleanText(draft.location);
     Object.assign(values, {
       intro: `平素より${property}の機械式駐車場をご利用いただきありがとうございます。`,
-      introDate: `${date}に、「${work}」を行います。`,
+      introDate: datedIntro,
       closure: notes.length ? '下記の工事日時と注意事項をご確認ください。' : '下記の工事日時をご確認ください。',
       mainDate: date,
       timeRange: `${startTime} ～ ${endTime}`,
@@ -547,9 +554,8 @@ export function noticePayload(mode, draft) {
       location,
     });
   } else {
-    const lastDay = dateLabel(end, fullEnd);
     Object.assign(values, {
-      intro: `平素より${property}をご利用いただきありがとうございます。${date}～${lastDay}に、「${work}」を行います。`,
+      intro: datedIntro,
       closure: notes.length
         ? '工事期間中のご利用については、下記の注意事項をご確認ください。'
         : '下記の工事期間・作業内容をご確認ください。',
@@ -569,14 +575,16 @@ export function noticePayload(mode, draft) {
   }
   if (mode === 'short') values.notice2Detail = '';
   return {
-    mode, values, notes, fullEnd,
+    mode, values, notes, fullEnd, introParts,
     compactSchedule: mode === 'short' && !values.location,
     workSchedule: spanLabel(workPeriod),
     vehicleSummary: summary,
     // The longest full-width date plus time can wrap at the original 20 pt.
     compactStart: mode === 'long' && start?.month >= 10 && start.day >= 10,
-    // The original long outline has room for two 14 pt work lines.
-    extraOutlineLines: mode === 'long' ? Math.max(0, Math.ceil(textWidth(work) / 30) - 2) : 0,
+    // The long template has room for two work lines, and the short one for one location line.
+    extraOutlineLines: mode === 'long'
+      ? Math.max(0, Math.ceil(textWidth(work) / 30) - 2)
+      : Math.max(0, Math.ceil(textWidth(values.location) / 25) - 1),
   };
 }
 

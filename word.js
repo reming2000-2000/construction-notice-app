@@ -28,18 +28,26 @@ export async function loadWordTemplate(mode) {
   return templates.get(mode);
 }
 
-function resizeOutline(document, extraLines) {
+function resizeOutline(document, points, keepCornerSize = false) {
   // Adjust the same work frame in both the modern and legacy Word drawings.
   const outline = document.getElementsByTagNameNS(MC, 'AlternateContent')[1];
-  const expansion = extraLines * 17.9;
+  const originalHeight = Number(outline.getElementsByTagNameNS(WP, 'extent')[0].getAttribute('cy'));
+  const heightDelta = Math.round(points * 12_700);
   for (const [namespace, name] of [[WP, 'extent'], [A, 'ext']]) {
     const extent = outline.getElementsByTagNameNS(namespace, name)[0];
     const height = Number(extent.getAttribute('cy'));
-    extent.setAttribute('cy', String(height + Math.round(expansion * 12_700)));
+    extent.setAttribute('cy', String(height + heightDelta));
   }
   const rectangle = outline.getElementsByTagNameNS(VML, 'roundrect')[0];
   rectangle.setAttribute('style', rectangle.getAttribute('style')
-    .replace(/height:([\d.]+)pt/, (_, height) => `height:${(Number(height) + expansion).toFixed(2)}pt`));
+    .replace(/height:([\d.]+)pt/, (_, height) => `height:${(Number(height) + points).toFixed(2)}pt`));
+  if (keepCornerSize) {
+    const scale = originalHeight / (originalHeight + heightDelta);
+    const corner = outline.getElementsByTagNameNS(A, 'gd')[0];
+    const adjustment = Number(corner.getAttribute('fmla').slice(4));
+    corner.setAttribute('fmla', `val ${Math.round(adjustment * scale)}`);
+    rectangle.setAttribute('arcsize', `${(20 * scale).toFixed(2)}%`);
+  }
 }
 
 function removeBetween(first, last) {
@@ -106,6 +114,21 @@ function setRunText(field, value) {
   }
 }
 
+function setRunColor(run, color) {
+  run.getElementsByTagNameNS(W, 'color')[0].setAttributeNS(W, 'w:val', color);
+}
+
+function setIntroRuns(field, parts) {
+  const original = field.parentNode;
+  for (const { text, red } of parts) {
+    const run = original.cloneNode(true);
+    setRunColor(run, red ? 'EE0000' : '000000');
+    setRunText(run.getElementsByTagNameNS(W, 't')[0], text);
+    original.before(run);
+  }
+  original.remove();
+}
+
 export function fillDocument(templateXml, payload) {
   const document = new DOMParser().parseFromString(templateXml, 'application/xml');
   if (document.documentElement.namespaceURI !== W || document.documentElement.localName !== 'document' ||
@@ -118,7 +141,7 @@ export function fillDocument(templateXml, payload) {
     const match = /^@@(\w+)@@$/.exec(text.textContent);
     if (match) fields.set(match[1], text);
   }
-  const { values, mode, notes, fullEnd, compactStart, compactSchedule, extraOutlineLines } = payload;
+  const { values, mode, notes, fullEnd, compactStart, compactSchedule, extraOutlineLines, introParts } = payload;
   if (fields.size !== Object.keys(values).length || [...fields.keys()].some(key => !Object.hasOwn(values, key))) {
     throw new Error('テンプレートの差し込み欄が一致しません。');
   }
@@ -129,15 +152,15 @@ export function fillDocument(templateXml, payload) {
   const extraNoteStyle = paragraph(mode === 'short' ? 'notice2Detail' : 'notice5').cloneNode(true);
 
   if (compactSchedule) {
-    const scheduleHeading = paragraph('mainDate').previousElementSibling;
-    // Delete the old floating frame and the paragraphs reserved for its padding and work location.
-    removeBetween(paragraph('closure').nextElementSibling, scheduleHeading);
+    // Keep the template frame and the schedule anchor. Drop only the location and its reserved lines.
     removeBetween(paragraph('timeRange'), notesHeading);
-    spacing(scheduleHeading).setAttributeNS(W, 'w:before', '420');
-    spacing(notesHeading).setAttributeNS(W, 'w:before', '280');
+    resizeOutline(document, -82, true);
+    spacing(notesHeading).setAttributeNS(W, 'w:before', '880');
   } else if (mode === 'long') {
     // Reopening is explained with the vehicle rules, leaving one fewer line inside the frame.
-    resizeOutline(document, extraOutlineLines - 1);
+    resizeOutline(document, (extraOutlineLines - 1) * 17.9);
+  } else if (extraOutlineLines) {
+    resizeOutline(document, extraOutlineLines * 17.9, true);
   }
   spacing(notesHeading).setAttributeNS(W, 'w:after', '120');
 
@@ -186,8 +209,11 @@ export function fillDocument(templateXml, payload) {
     width.setAttributeNS(W, 'w:val', '92');
     runProperties.insertBefore(width, runProperties.getElementsByTagNameNS(W, 'sz')[0]);
   }
+  const datedIntro = mode === 'short' ? 'introDate' : 'intro';
+  setRunColor(fields.get('closure').parentNode, '000000');
   for (const [key, field] of fields) {
-    setRunText(field, values[key]);
+    if (key === datedIntro) setIntroRuns(field, introParts);
+    else setRunText(field, values[key]);
   }
   placeContactAtBottom(contactHeading, paragraph('contact'));
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +

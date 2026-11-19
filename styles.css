@@ -261,10 +261,11 @@ legend {
 }
 .paper.long .notice-title { margin-top: 4.6mm; }
 .notice-title > span { color: #fff; background: #000; }
-.intro { margin: 14.3mm 25mm 0; }
+.intro { margin: 14.3mm 25mm 0; color: #000; }
 .paper.long .intro { margin-top: 8mm; }
 .intro p { margin: 0; }
-.closure { color: #e00; font-weight: bold; }
+.intro-date { color: #e00; }
+.closure { font-weight: bold; }
 
 .outline-box {
   min-height: 70.6mm;
@@ -274,7 +275,7 @@ legend {
   padding: 6.6mm 14.7mm 9mm 12.1mm;
 }
 .paper.long .outline-box { min-height: 64.3mm; }
-.paper.compact-schedule .outline-box { min-height: 0; margin: 7.4mm 25mm 0; padding: 0; border: 0; }
+.paper.compact-schedule .outline-box { min-height: 0; }
 .part-label { font-size: 14pt; line-height: 17pt; }
 .big-date, .big-time {
   margin-left: 7.65mm;
