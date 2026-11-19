@@ -52,6 +52,47 @@ function spacing(paragraph) {
   return paragraph.firstElementChild.getElementsByTagNameNS(W, 'spacing')[0];
 }
 
+function appendWord(parent, name, attributes = {}) {
+  const node = parent.ownerDocument.createElementNS(W, 'w:' + name);
+  for (const [key, value] of Object.entries(attributes)) {
+    node.setAttributeNS(W, 'w:' + key, value);
+  }
+  parent.append(node);
+  return node;
+}
+
+function placeContactAtBottom(heading, contact) {
+  const body = heading.parentNode;
+  const section = body.lastElementChild;
+  const margins = section.getElementsByTagNameNS(W, 'pgMar')[0];
+  const pageWidth = section.getElementsByTagNameNS(W, 'pgSz')[0].getAttributeNS(W, 'w');
+  const width = Number(pageWidth) - Number(margins.getAttributeNS(W, 'left')) -
+    Number(margins.getAttributeNS(W, 'right'));
+
+  // A single table follows the last note in document order. Native text wrapping
+  // reserves its space and can move it to the next page when the page is full.
+  const table = body.ownerDocument.createElementNS(W, 'w:tbl');
+  heading.before(table);
+  const properties = appendWord(table, 'tblPr');
+  appendWord(properties, 'tblpPr', {
+    horzAnchor: 'margin', vertAnchor: 'margin', tblpX: '0', tblpYSpec: 'bottom', topFromText: '320',
+  });
+  appendWord(properties, 'tblOverlap', { val: 'never' });
+  appendWord(properties, 'tblW', { w: width, type: 'dxa' });
+  appendWord(properties, 'tblLayout', { type: 'fixed' });
+  const padding = appendWord(properties, 'tblCellMar');
+  for (const side of ['top', 'left', 'bottom', 'right']) {
+    appendWord(padding, side, { w: '0', type: 'dxa' });
+  }
+  appendWord(appendWord(table, 'tblGrid'), 'gridCol', { w: width });
+  const row = appendWord(table, 'tr');
+  appendWord(appendWord(row, 'trPr'), 'cantSplit');
+  const cell = appendWord(row, 'tc');
+  appendWord(appendWord(cell, 'tcPr'), 'tcW', { w: width, type: 'dxa' });
+  spacing(heading).setAttributeNS(W, 'w:before', '0');
+  cell.append(heading, contact);
+}
+
 function setRunText(field, value) {
   const [first, ...lines] = value.split('\n');
   field.setAttributeNS(XML, 'xml:space', 'preserve');
@@ -103,7 +144,6 @@ export function fillDocument(templateXml, payload) {
     resizeOutline(document, extraOutlineLines - 1);
   }
   spacing(notesHeading).setAttributeNS(W, 'w:after', '120');
-  spacing(contactHeading).setAttributeNS(W, 'w:before', '400');
 
   const optional = ['recipient', 'notesHeading', ...Object.keys(values).filter(key => /^notice[1-6]$/.test(key))];
   optional.push(mode === 'short' ? 'notice2Detail' : 'resume');
@@ -129,11 +169,8 @@ export function fillDocument(templateXml, payload) {
     } else {
       const props = line.firstElementChild;
       props.getElementsByTagNameNS(W, 'ind')[0]?.remove();
-      if (!note.red) {
-        for (const field of [note.key, note.key.replace('notice', 'bullet')]) {
-          const color = fields.get(field)?.parentNode.getElementsByTagNameNS(W, 'color')[0];
-          color?.setAttributeNS(W, 'w:val', '000000');
-        }
+      for (const color of line.getElementsByTagNameNS(W, 'color')) {
+        color.setAttributeNS(W, 'w:val', note.red ? 'EE0000' : '000000');
       }
       if (next && !next.additional) {
         props.insertBefore(document.createElementNS(W, 'w:keepNext'), props.getElementsByTagNameNS(W, 'keepLines')[0]);
@@ -154,6 +191,7 @@ export function fillDocument(templateXml, payload) {
   for (const [key, field] of fields) {
     setRunText(field, values[key]);
   }
+  placeContactAtBottom(contactHeading, paragraph('contact'));
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     new XMLSerializer().serializeToString(document.documentElement);
 }

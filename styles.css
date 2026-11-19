@@ -201,6 +201,8 @@ legend {
   position: absolute;
   top: 0;
   left: 0;
+  display: flex;
+  flex-direction: column;
   width: 210mm;
   min-height: 297mm;
   padding: 12.5mm 0 13mm;
@@ -284,13 +286,13 @@ legend {
 
 .notes-section { margin: 5mm 25mm 0; }
 .notes-section > .part-label { margin-bottom: 6pt; }
-.notice-line { display: flex; gap: 2pt; font-family: "Noto Sans CJK JP", Meiryo, "Yu Gothic", sans-serif; font-size: 14pt; line-height: 16pt; font-weight: bold; }
+.notice-line { display: flex; gap: 2pt; color: #000; font-family: "Noto Sans CJK JP", Meiryo, "Yu Gothic", sans-serif; font-size: 14pt; line-height: 16pt; font-weight: bold; }
 .notice-line + .notice-line { margin-top: 4pt; }
 .notice-line.red { color: #e00; }
 .notice-bullet { flex: none; }
 .note-text { min-width: 0; white-space: pre-line; overflow-wrap: anywhere; }
 .extra-note { color: #111; font-size: 12pt; font-weight: normal; }
-.contact { margin: 20pt 25mm 0; font-size: 9pt; }
+.contact { margin: auto 25mm 0; padding-top: 20pt; font-size: 9pt; }
 .contact > :last-child { padding-inline-start: 10.6pt; }
 .preview-foot { font-size: 11px; color: #536077; line-height: 1.5; max-width: 812px; margin: 12px auto 0; }
 
@@ -326,12 +328,16 @@ legend {
   }
   .paper {
     position: static;
-    min-height: 0;
+    min-height: calc(297mm - 12.5mm - 13mm - .5mm);
     padding-block: 0;
     transform: none !important;
     box-shadow: none;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+  .paper.overflow {
+    display: block;
+    min-height: 0;
   }
   .letterhead, .notice-title, .outline-box, .notice-line, .contact { break-inside: avoid; }
   .notice-title, .notes-section > .part-label { break-after: avoid; }

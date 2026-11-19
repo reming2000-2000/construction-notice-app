@@ -71,6 +71,7 @@ export function createDraft(mode, now = new Date()) {
     endTime: '',
     vehicleMode: 'stay',
     restrictionMode: 'work',
+    restrictionColor: 'red',
     resumeMode: 'restriction',
     resumeDate: '',
     resumeTime: '',
@@ -160,6 +161,7 @@ export function restoreDrafts(saved) {
     if (legacy) restoreLegacyOptions(mode, draft, previous);
     if (!Object.hasOwn(vehicleLabels, draft.vehicleMode)) draft.vehicleMode = '';
     if (!Object.hasOwn(restrictionCopy, draft.restrictionMode)) draft.restrictionMode = '';
+    if (draft.restrictionColor !== 'black') draft.restrictionColor = 'red';
     if (draft.resumeMode !== 'custom') draft.resumeMode = 'restriction';
     draft.additionalNotes = restoreAdditionalNotes(mode, previous, legacy);
     if (current) {
@@ -457,7 +459,7 @@ function collectNotes(mode, draft, work) {
   const point = resumePoint(draft, work);
   const resume = draft.selectedNotices.includes('resume') ? resumeSentence(point, work) : '';
   const notes = [
-    { key: 'notice1', text: restriction },
+    { key: 'notice1', text: restriction, red: draft.restrictionColor !== 'black' },
     { key: short ? 'notice2' : 'notice3', text: rule, red: draft.vehicleMode === 'leave' },
   ].filter(note => note.text);
   const added = new Set(notes.map(note => note.text.normalize('NFKC').replace(/\s/g, '')));

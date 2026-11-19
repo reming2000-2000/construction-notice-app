@@ -15,6 +15,7 @@ let pendingReview = null;
 let pendingMode = '';
 let layoutFrame;
 let textWarnings = [];
+const printMedia = window.matchMedia('print');
 const choices = [];
 const ruleInputs = $$('input[name="vehicleMode"], input[name="restrictionMode"]');
 
@@ -410,7 +411,8 @@ function render() {
   const short = mode === 'short';
   const paper = $('#paper');
   updateNoticeChoices(draft, payload);
-  paper.className = `paper ${mode}`;
+  paper.classList.toggle('short', short);
+  paper.classList.toggle('long', !short);
   paper.classList.toggle('full-end', payload.fullEnd);
   paper.classList.toggle('date-compact', payload.compactStart);
   paper.classList.toggle('compact-schedule', payload.compactSchedule);
@@ -496,11 +498,14 @@ function scheduleScale() {
 }
 
 function scalePreview() {
+  if (printMedia.matches) return;
+
   const paper = $('#paper');
   const scroller = $('#paperScroller');
   const holder = $('#paperHolder');
   const width = paper.offsetWidth;
   const height = paper.offsetHeight;
+  paper.classList.toggle('overflow', previewOverflows());
   const scale = Math.min(1, scroller.clientWidth / width);
   holder.style.width = `${width * scale}px`;
   holder.style.height = `${height * scale}px`;
@@ -515,11 +520,14 @@ function scalePreview() {
   putText('previewStatus', warnings.length ? `${warnings.length}件の確認項目` : '入力内容を確認できます');
 }
 
+function previewOverflows() {
+  const { offsetHeight: height, offsetWidth: width } = $('#paper');
+  return height > Math.round(width * 297 / 210);
+}
+
 function previewWarnings(messages) {
-  const paper = $('#paper');
-  const { offsetHeight: height, offsetWidth: width } = paper;
   const warnings = [...messages];
-  if (height > width * 297 / 210 + 2) {
+  if (previewOverflows()) {
     warnings.push('A4の1ページを超えています。印刷とWordで改ページを確認してください。');
   }
   return warnings;
@@ -579,6 +587,7 @@ function confirmDistribution() {
   if (confirmed.format === 'word') {
     void downloadWord(confirmed);
   } else {
+    $('#paper').classList.toggle('overflow', previewOverflows());
     window.print();
   }
 }

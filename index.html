@@ -33,9 +33,9 @@
           <div class="field-grid">
             <label class="field"><span>発行年月 <em>必須</em></span><input type="month" data-field="issueMonth" required /></label>
             <label class="field"><span>宛名</span><input type="text" data-field="recipient" maxlength="40" placeholder="機械式駐車場 ご利用者 様" /></label>
-            <label class="field wide"><span>物件名 <em>必須</em></span><input type="text" data-field="propertyName" maxlength="80" placeholder="例：〇〇マンション" required /></label>
+            <label class="field wide"><span>物件名 <em>必須</em></span><input type="text" data-field="propertyName" maxlength="80" placeholder="例：〇〇ビル" required /></label>
             <label class="field wide"><span>案内文のタイトル <em>必須</em></span><input type="text" data-field="title" maxlength="52" required /></label>
-            <label class="field wide"><span>工事内容 <em>必須</em></span><input type="text" data-field="workDescription" maxlength="100" placeholder="例：油圧ポンプユニットの交換作業" required /></label>
+            <label class="field wide"><span>工事内容 <em>必須</em></span><input type="text" data-field="workDescription" maxlength="100" placeholder="例：〇〇の交換作業" required /></label>
           </div>
         </fieldset>
         <fieldset>
@@ -77,6 +77,13 @@
             <label class="choice-row"><input type="radio" name="restrictionMode" value="continuous" required /><span>工事期間中（夜間含む）</span></label>
             <p id="restrictionModeError" class="field-error" hidden></p>
           </div>
+          <label class="field">
+            <span>入出庫制限の注意事項の文字色</span>
+            <select data-field="restrictionColor">
+              <option value="red">赤色</option>
+              <option value="black">黒色</option>
+            </select>
+          </label>
           <p class="help legacy-note" id="legacyResume" hidden></p>
           <p class="help legacy-note" id="legacyVehicleNotes" hidden></p>
         </fieldset>
