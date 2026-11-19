@@ -3,6 +3,7 @@ const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawi
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
 const VML = 'urn:schemas-microsoft-com:vml';
+const XML = 'http://www.w3.org/XML/1998/namespace';
 const MODEL_VERSION = 2;
 const encoder = new TextEncoder();
 const templates = new Map();
@@ -53,6 +54,7 @@ function spacing(paragraph) {
 
 function setRunText(field, value) {
   const [first, ...lines] = value.split('\n');
+  field.setAttributeNS(XML, 'xml:space', 'preserve');
   field.textContent = first;
   let last = field;
   for (const line of lines) {
@@ -122,13 +124,17 @@ export function fillDocument(templateXml, payload) {
     lineSpacing.setAttributeNS(W, 'w:line', '320');
     if (next) lineSpacing.setAttributeNS(W, 'w:after', '80');
     if (note.additional) {
-      setRunText(line.getElementsByTagNameNS(W, 't')[0], `・${note.text}`);
+      setRunText(line.getElementsByTagNameNS(W, 't')[0], `◆ ${note.text}`);
       contactHeading.before(line);
     } else {
       const props = line.firstElementChild;
       props.getElementsByTagNameNS(W, 'ind')[0]?.remove();
-      const color = fields.get(note.key).parentNode.getElementsByTagNameNS(W, 'color')[0];
-      if (!note.red) color?.setAttributeNS(W, 'w:val', '000000');
+      if (!note.red) {
+        for (const field of [note.key, note.key.replace('notice', 'bullet')]) {
+          const color = fields.get(field)?.parentNode.getElementsByTagNameNS(W, 'color')[0];
+          color?.setAttributeNS(W, 'w:val', '000000');
+        }
+      }
       if (next && !next.additional) {
         props.insertBefore(document.createElementNS(W, 'w:keepNext'), props.getElementsByTagNameNS(W, 'keepLines')[0]);
       }

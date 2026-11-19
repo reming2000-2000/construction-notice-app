@@ -1,7 +1,8 @@
 /* Static browser app. The preview, browser print and Word share one notice payload. */
 import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
-  layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput, noteExamples,
+  layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput,
+  additionalOptions, canSelectNotice, selectAdditionalNotice,
 } from './notice.js';
 import { loadWordTemplate, createWord } from './word.js';
 
@@ -14,6 +15,8 @@ let pendingReview = null;
 let pendingMode = '';
 let layoutFrame;
 let textWarnings = [];
+const choices = [];
+const ruleInputs = $$('input[name="vehicleMode"], input[name="restrictionMode"]');
 
 function putText(id, text) {
   const node = document.getElementById(id);
@@ -85,7 +88,10 @@ function updateForm() {
     if (input.hasAttribute('data-time-select')) setTimeField(input, value);
     else input.value = value;
   });
-  $$('input[name="vehicleMode"]').forEach(input => { input.checked = input.value === drafts[mode].vehicleMode; });
+  for (const input of ruleInputs) input.checked = input.value === drafts[mode][input.name];
+  for (const { option, editor } of choices) {
+    if (editor) editor.value = drafts[mode].noticeOverrides[option.id] ?? option.text;
+  }
   renderNoteChoices();
   renderNoteEditors();
   showNoteStatus();
@@ -97,19 +103,25 @@ function updateForm() {
   render();
 }
 
-function updateVehicleFields(draft) {
-  const stopped = draft.vehicleMode === 'stay' || draft.vehicleMode === 'leave';
-  const continuous = draft.restrictionMode === 'continuous';
-  const daily = draft.restrictionMode === 'daily';
-  $('#restrictionDailyOption').disabled = mode !== 'long';
-  $('#restrictionDailyOption').hidden = mode !== 'long';
-  $('#deadlineFields').hidden = draft.vehicleMode !== 'leave';
-  $('#restrictionSettings').hidden = !stopped;
-  $('#restrictionTimeFields').hidden = !continuous && !daily;
-  $$('.restriction-date-field').forEach(field => { field.hidden = !continuous; });
-  $('#dailyRestrictionHelp').hidden = !daily;
-  $('#resumeSettings').hidden = !stopped;
+function updateNoticeChoices(draft, payload) {
+  for (const { option, input, detail, preview, help } of choices) {
+    input.disabled = !canSelectNotice(draft, option.id);
+    input.checked = !input.disabled && draft.selectedNotices.includes(option.id);
+    detail.hidden = !input.checked;
+    if (preview) {
+      preview.textContent = payload.notes.find(note => note.optionId === option.id)?.text ??
+        (option.id === 'resume' && payload.vehicleSummary.resume === '要入力'
+          ? '利用再開の日時を指定してください。' : '');
+    }
+    if (help && option.id !== 'parking') {
+      help.hidden = !input.disabled;
+      if (input.disabled) input.setAttribute('aria-describedby', help.id);
+      else input.removeAttribute('aria-describedby');
+    }
+  }
+  $('#resumeSettings').hidden = !draft.selectedNotices.includes('resume');
   $('#resumeCustomFields').hidden = draft.resumeMode !== 'custom';
+  $('#targetSpacesField').hidden = !draft.selectedNotices.includes('spaces') || !canSelectNotice(draft, 'spaces');
 }
 
 function showExportStatus(message = '', error = false) {
@@ -169,18 +181,15 @@ function renderNotes(payload) {
     const row = document.createElement('div');
     row.className = 'notice-line';
     row.classList.toggle('red', !!note.red);
-    row.classList.toggle('note-detail', !!note.detail);
     row.classList.toggle('extra-note', !!note.additional);
-    if (note.additional) {
-      const bullet = document.createElement('span');
-      bullet.textContent = '・';
-      bullet.setAttribute('aria-hidden', 'true');
-      row.append(bullet);
-    }
+    const bullet = document.createElement('span');
+    bullet.className = 'notice-bullet';
+    bullet.textContent = '◆ ';
+    bullet.setAttribute('aria-hidden', 'true');
     const text = document.createElement('span');
     text.className = 'note-text';
     text.textContent = note.text;
-    row.append(text);
+    row.append(bullet, text);
     list.append(row);
   }
   putText('vNotesHeading', payload.values.notesHeading);
@@ -201,9 +210,73 @@ function showNoteStatus(message = '') {
   putText('noteStatus', message);
 }
 
+function initNoticeChoices() {
+  const hints = {
+    parking: '代替駐車場を別途案内することが決まっている場合に選択してください。',
+    distribution: '「鍵・取扱説明書の変更」を選ぶと追加できます。',
+    spaces: '全車両の事前出庫を求める場合は選択できません。',
+  };
+  for (const option of additionalOptions) {
+    const { id, label, text, group } = option;
+    const row = document.createElement('div');
+    row.className = 'preset-row';
+    const choice = document.createElement('label');
+    choice.className = 'choice-row';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.dataset.presetId = id;
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    choice.append(input, caption);
+    row.append(choice);
+
+    let help;
+    if (hints[id]) {
+      help = document.createElement('p');
+      help.className = 'help preset-help';
+      help.id = `help-preset-${id}`;
+      help.textContent = hints[id];
+      input.setAttribute('aria-describedby', help.id);
+      row.append(help);
+    }
+    let editor, preview;
+    let detail;
+    if (text) {
+      detail = document.createElement('label');
+      detail.className = 'field preset-detail';
+      const instruction = document.createElement('span');
+      instruction.textContent = '掲載文（この案内のみ編集可）';
+      editor = document.createElement('textarea');
+      editor.rows = 2;
+      editor.dataset.presetText = id;
+      editor.setAttribute('aria-label', `${label}の掲載文`);
+      editor.addEventListener('input', () => {
+        const overrides = drafts[mode].noticeOverrides;
+        if (editor.value.trim() && editor.value !== text) overrides[id] = editor.value;
+        else delete overrides[id];
+        updateNotes();
+      });
+      editor.addEventListener('blur', () => {
+        if (!editor.value.trim()) editor.value = text;
+      });
+      detail.append(instruction, editor);
+    } else {
+      detail = preview = document.createElement('p');
+      detail.className = 'help preset-detail';
+    }
+    row.append(detail);
+    input.addEventListener('change', () => {
+      selectAdditionalNotice(drafts[mode], id, input.checked);
+      updateNotes();
+    });
+    choices.push({ option, input, detail, editor, preview, help });
+    $(group === 'common' ? '#commonNoticeChoices' : '#otherNoticeChoices').append(row);
+  }
+}
+
 function renderNoteChoices() {
   const categories = new Map();
-  for (const example of [...noteExamples, ...savedExamples]) {
+  for (const example of savedExamples) {
     const category = example.category || '登録した文例';
     if (!categories.has(category)) categories.set(category, []);
     categories.get(category).push(example);
@@ -286,13 +359,13 @@ function renderNoteEditors() {
     register.addEventListener('click', () => {
       const text = note.text.trim();
       if (!text) return;
-      if ([...noteExamples, ...savedExamples].some(example => example.text === text)) {
+      if ([...additionalOptions, ...savedExamples].some(example => example.text === text)) {
         showNoteStatus('同じ文例がすでにあります。');
         return;
       }
       const example = { id: 'custom-' + crypto.randomUUID(), text };
       savedExamples.push(example);
-      if (!note.exampleId) note.exampleId = example.id;
+      note.exampleId = example.id;
       renderNoteChoices();
       saveDrafts();
       showNoteStatus('このブラウザに文例を登録しました。');
@@ -306,6 +379,19 @@ function renderNoteEditors() {
       register.disabled = !note.text.trim();
       updateNotes();
     });
+    for (const button of row.querySelectorAll('[data-move-note]')) {
+      const next = index + Number(button.dataset.moveNote);
+      button.disabled = next < 0 || next >= notes.length;
+      button.setAttribute('aria-label', `${label}を${button.textContent}移動`);
+      button.addEventListener('click', () => {
+        [notes[index], notes[next]] = [notes[next], notes[index]];
+        renderNoteEditors();
+        const movedRow = list.children[next];
+        const sameButton = movedRow.querySelector(`[data-move-note="${button.dataset.moveNote}"]`);
+        (sameButton.disabled ? movedRow.querySelector('[data-note-text]') : sameButton).focus();
+        updateNotes();
+      });
+    }
     remove.addEventListener('click', () => {
       notes.splice(index, 1);
       renderNoteEditors();
@@ -323,7 +409,7 @@ function render() {
   const values = payload.values;
   const short = mode === 'short';
   const paper = $('#paper');
-  updateVehicleFields(draft);
+  updateNoticeChoices(draft, payload);
   paper.className = `paper ${mode}`;
   paper.classList.toggle('full-end', payload.fullEnd);
   paper.classList.toggle('date-compact', payload.compactStart);
@@ -354,14 +440,15 @@ function render() {
   renderNotes(payload);
 
   const errors = validate(mode, draft);
-  const vehicleError = errors.get('vehicleMode');
-  $('#vehicleModeError').hidden = !vehicleError;
-  putText('vehicleModeError', vehicleError || '');
-  $$('input[name="vehicleMode"]').forEach(input => {
-    input.setAttribute('aria-invalid', String(!!vehicleError));
-    if (vehicleError) input.setAttribute('aria-describedby', 'vehicleModeError');
+  for (const input of ruleInputs) {
+    const error = errors.get(input.name);
+    const errorId = `${input.name}Error`;
+    document.getElementById(errorId).hidden = !error;
+    putText(errorId, error || '');
+    input.setAttribute('aria-invalid', String(!!error));
+    if (error) input.setAttribute('aria-describedby', errorId);
     else input.removeAttribute('aria-describedby');
-  });
+  }
   textWarnings = [...errors.values(), ...layoutWarnings(mode, draft, payload)];
   renderFieldErrors(errors);
   updateButtons(errors.size > 0);
@@ -565,11 +652,14 @@ function init() {
     if (input.hasAttribute('data-time-select')) initTimeField(input);
     else input.addEventListener('input', () => updateDraftField(input, input.value));
   });
-  $$('input[name="vehicleMode"]').forEach(input => input.addEventListener('change', () => {
+  for (const input of ruleInputs) input.addEventListener('change', () => {
     if (!input.checked) return;
-    drafts[mode].vehicleMode = input.value;
+    const draft = drafts[mode];
+    draft[input.name] = input.value;
+    if (!canSelectNotice(draft, 'spaces')) selectAdditionalNotice(draft, 'spaces', false);
     updateNotes();
-  }));
+  });
+  initNoticeChoices();
   $('#addNoteButton').onclick = () => {
     drafts[mode].additionalNotes.push({ text: '', enabled: true });
     renderNoteEditors();
