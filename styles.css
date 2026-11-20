@@ -237,8 +237,8 @@ legend {
 .letterhead { position: relative; margin: 0 25mm; padding-top: 7.6mm; }
 .important {
   position: absolute;
-  top: 0;
-  left: -1mm;
+  top: -2.5mm;
+  left: -5mm;
   width: 28.3mm;
   line-height: 13.8mm;
   border: .65pt solid red;
@@ -331,7 +331,18 @@ legend {
   .review-summary > div { grid-template-columns: minmax(0, 1fr); }
 }
 
-@page { size: A4 portrait; margin: 12.5mm 0 13mm; }
+@page {
+  size: A4 portrait;
+  margin: 12.5mm 0 13mm;
+  /* Empty margin boxes take the place of Chromium's automatic print labels. */
+  @top-left { content: ""; }
+  @top-center { content: ""; }
+  @top-right { content: ""; }
+  @bottom-left { content: ""; }
+  @bottom-center { content: ""; }
+  @bottom-right { content: ""; }
+}
+@page :first { margin-top: 9.5mm; }
 @media print {
   html, body { background: #fff; }
   .no-print { display: none !important; }
@@ -345,8 +356,9 @@ legend {
   }
   .paper {
     position: static;
-    min-height: calc(297mm - 12.5mm - 13mm - .5mm);
-    padding-block: 0;
+    min-height: calc(297mm - 9.5mm - 13mm - .5mm);
+    /* Move 3 mm of the first-page margin inside the paper so the raised stamp can print. */
+    padding-block: 3mm 0;
     transform: none !important;
     box-shadow: none;
     -webkit-print-color-adjust: exact;

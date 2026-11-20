@@ -650,6 +650,9 @@ function openDistributionReview(format) {
   $('#reviewNotesRow').hidden = notes.length === 0;
   putText('reviewContact', payload.values.contact);
   putText('reviewConfirmButton', format === 'word' ? '確認してWordを出力' : '確認して印刷画面を開く');
+  const printHelp = $('#reviewPrintHelp');
+  printHelp.hidden = format !== 'print';
+  dialog.setAttribute('aria-describedby', printHelp.hidden ? 'reviewDescription' : 'reviewDescription reviewPrintHelp');
 
   const warnings = previewWarnings([
     ...conflictItems(noticeWarnings(payload)),

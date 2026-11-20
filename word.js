@@ -2,6 +2,8 @@ const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
+const V = 'urn:schemas-microsoft-com:vml';
+const WPS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
 const PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
 const OFFICE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const PACKAGE_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
@@ -9,6 +11,7 @@ const XML = 'http://www.w3.org/XML/1998/namespace';
 const FRAME_REL_ID = 'rIdScheduleFrame';
 const FRAME_TARGET = 'media/schedule-frame.png';
 const EMU_PER_POINT = 12_700;
+const EMU_PER_MM = 36_000;
 const TEMPLATE_LINE_TWIPS = 358;
 const NOTICE_FONT = 'Meiryo';
 const MODEL_VERSION = 2;
@@ -34,6 +37,49 @@ export async function loadWordTemplate(mode) {
     templates.set(mode, template);
   }
   return templates.get(mode);
+}
+
+function adjustImportantStamp(document) {
+  const stamp = document.getElementsByTagNameNS(MC, 'AlternateContent')[0];
+  const anchor = stamp.getElementsByTagNameNS(WP, 'anchor')[0];
+  const offset = direction => anchor.getElementsByTagNameNS(WP, 'position' + direction)[0]
+    .getElementsByTagNameNS(WP, 'posOffset')[0];
+  const left = Number(offset('H').textContent) - 4 * EMU_PER_MM;
+  const top = Number(offset('V').textContent) - 2.5 * EMU_PER_MM;
+  offset('H').textContent = String(left);
+  offset('V').textContent = String(top);
+
+  // Match the anchor to the red shape's bounds and reserve half its stroke on each side.
+  const extent = anchor.getElementsByTagNameNS(WP, 'extent')[0];
+  const width = Number(extent.getAttribute('cx'));
+  const height = Number(extent.getAttribute('cy'));
+  const transformExtent = stamp.getElementsByTagNameNS(A, 'ext')[0];
+  transformExtent.setAttribute('cx', width);
+  transformExtent.setAttribute('cy', height);
+  const line = stamp.getElementsByTagNameNS(A, 'ln')[0];
+  const stroke = Number(line.getAttribute('w'));
+  const effect = anchor.getElementsByTagNameNS(WP, 'effectExtent')[0];
+  for (const side of ['l', 't', 'r', 'b']) effect.setAttribute(side, String(Math.ceil(stroke / 2)));
+
+  // Keep the native text box and synchronize the VML fallback with the DrawingML shape.
+  const fallback = stamp.getElementsByTagNameNS(V, 'roundrect')[0];
+  const points = value => (value / EMU_PER_POINT).toFixed(3) + 'pt';
+  fallback.setAttribute('style', fallback.getAttribute('style')
+    .replace(/margin-left:[^;]+/, `margin-left:${points(left)}`)
+    .replace(/margin-top:[^;]+/, `margin-top:${points(top)}`)
+    .replace(/width:[^;]+/, `width:${points(width)}`)
+    .replace(/height:[^;]+/, `height:${points(height)}`)
+    .replace('mso-wrap-style:square', 'mso-wrap-style:none')
+    .replace('v-text-anchor:top', 'v-text-anchor:middle'));
+  fallback.setAttribute('strokecolor', '#' + line.getElementsByTagNameNS(A, 'srgbClr')[0].getAttribute('val'));
+  fallback.setAttribute('strokeweight', points(stroke));
+  fallback.setAttribute('filled', 'f');
+  fallback.getElementsByTagNameNS(V, 'stroke')[0].setAttribute('weight', points(stroke));
+  stamp.getElementsByTagNameNS(WPS, 'bodyPr')[0].setAttribute('anchor', 'ctr');
+  for (const box of stamp.getElementsByTagNameNS(W, 'txbxContent')) {
+    // Balance the visible glyphs inside the centered, fixed-height text line.
+    box.getElementsByTagNameNS(W, 'spacing')[0].setAttributeNS(W, 'w:before', '120');
+  }
 }
 
 function setScheduleFrame(document, { mode, compactSchedule, extraOutlineLines }, heading) {
@@ -261,6 +307,7 @@ function fillDocument(templateXml, payload) {
   const extraNoteStyle = paragraph(mode === 'short' ? 'notice2Detail' : 'notice5').cloneNode(true);
   const scheduleHeading = paragraph(mode === 'short' ? 'mainDate' : 'startLine').previousElementSibling;
   const scheduleEnd = paragraph(mode === 'short' ? 'timeRange' : 'endLine');
+  adjustImportantStamp(document);
   const frame = setScheduleFrame(document, payload, scheduleHeading);
 
   replaceSpacers(paragraph('issuer'), paragraph('title'));
