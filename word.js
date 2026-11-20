@@ -10,6 +10,7 @@ const FRAME_REL_ID = 'rIdScheduleFrame';
 const FRAME_TARGET = 'media/schedule-frame.png';
 const EMU_PER_POINT = 12_700;
 const TEMPLATE_LINE_TWIPS = 358;
+const NOTICE_FONT = 'Meiryo';
 const MODEL_VERSION = 2;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -80,8 +81,6 @@ function setScheduleFrame(document, { mode, compactSchedule, extraOutlineLines }
   offset.textContent = String(Number(offset.textContent) + beforeHeight * EMU_PER_POINT / 20);
   spacing(anchorParagraph).setAttributeNS(W, 'w:line', String(beforeHeight + lineHeight(anchorParagraph) + afterHeight));
   before.remove();
-  removeParagraphControl(anchorParagraph, 'keepLines');
-
   const radiusHeight = mode === 'short' ? originalHeight : height;
   return {
     width: width / EMU_PER_POINT,
@@ -150,23 +149,23 @@ function appendWord(parent, name, attributes = {}) {
   return node;
 }
 
-function placeContactAtBottom(heading, contact) {
-  const body = heading.parentNode;
+function insertUnsplitTable(before, atBottom = false) {
+  const body = before.parentNode;
   const section = body.lastElementChild;
   const margins = section.getElementsByTagNameNS(W, 'pgMar')[0];
   const pageWidth = section.getElementsByTagNameNS(W, 'pgSz')[0].getAttributeNS(W, 'w');
   const width = Number(pageWidth) - Number(margins.getAttributeNS(W, 'left')) -
     Number(margins.getAttributeNS(W, 'right'));
 
-  // A single table follows the last note in document order. Native text wrapping
-  // reserves its space and can move it to the next page when the page is full.
   const table = body.ownerDocument.createElementNS(W, 'w:tbl');
-  heading.before(table);
+  before.before(table);
   const properties = appendWord(table, 'tblPr');
-  appendWord(properties, 'tblpPr', {
-    horzAnchor: 'margin', vertAnchor: 'margin', tblpX: '0', tblpYSpec: 'bottom', topFromText: '320',
-  });
-  appendWord(properties, 'tblOverlap', { val: 'never' });
+  if (atBottom) {
+    appendWord(properties, 'tblpPr', {
+      horzAnchor: 'margin', vertAnchor: 'margin', tblpX: '0', tblpYSpec: 'bottom', topFromText: '320',
+    });
+    appendWord(properties, 'tblOverlap', { val: 'never' });
+  }
   appendWord(properties, 'tblW', { w: width, type: 'dxa' });
   appendWord(properties, 'tblLayout', { type: 'fixed' });
   const padding = appendWord(properties, 'tblCellMar');
@@ -178,6 +177,23 @@ function placeContactAtBottom(heading, contact) {
   appendWord(appendWord(row, 'trPr'), 'cantSplit');
   const cell = appendWord(row, 'tc');
   appendWord(appendWord(cell, 'tcPr'), 'tcW', { w: width, type: 'dxa' });
+  return cell;
+}
+
+function keepScheduleTogether(anchor, end) {
+  // The unsplit row keeps the picture and its editable text on the same page.
+  const cell = insertUnsplitTable(anchor);
+  for (let line = anchor; line !== end;) {
+    const next = line.nextElementSibling;
+    removeParagraphControl(line, 'keepLines');
+    removeParagraphControl(line, 'keepNext');
+    cell.append(line);
+    line = next;
+  }
+}
+
+function placeContactAtBottom(heading, contact) {
+  const cell = insertUnsplitTable(heading, true);
   spacing(heading).setAttributeNS(W, 'w:before', '0');
   removeParagraphControl(heading, 'keepNext');
   cell.append(heading, contact);
@@ -198,6 +214,17 @@ function setRunText(field, value) {
 
 function setRunColor(run, color) {
   run.getElementsByTagNameNS(W, 'color')[0].setAttributeNS(W, 'w:val', color);
+}
+
+function setNoticeFont(paragraph) {
+  for (const font of paragraph.getElementsByTagNameNS(W, 'rFonts')) {
+    for (const theme of ['asciiTheme', 'hAnsiTheme', 'eastAsiaTheme', 'cstheme']) {
+      font.removeAttributeNS(W, theme);
+    }
+    for (const script of ['ascii', 'hAnsi', 'eastAsia', 'cs']) {
+      font.setAttributeNS(W, 'w:' + script, NOTICE_FONT);
+    }
+  }
 }
 
 function setIntroRuns(field, parts) {
@@ -249,7 +276,6 @@ function fillDocument(templateXml, payload) {
   if (compactSchedule) {
     // The short form has no location block. Keep only the clearance below the frame.
     takeSpacerLines(scheduleEnd, afterSchedule);
-    removeParagraphControl(scheduleEnd, 'keepNext');
     spacing(notesHeading).setAttributeNS(W, 'w:before', '880');
   } else {
     const work = paragraph(mode === 'short' ? 'location' : 'workDescription');
@@ -257,21 +283,14 @@ function fillDocument(templateXml, payload) {
     if (notesHeading.isConnected) replaceSpacers(work, notesHeading);
     else takeSpacerLines(work, afterSchedule);
   }
-  for (let line = scheduleHeading; line !== afterSchedule; line = line.nextElementSibling) {
-    removeParagraphControl(line, 'keepLines');
-  }
+  keepScheduleTogether(scheduleHeading.previousElementSibling, afterSchedule);
   spacing(notesHeading).setAttributeNS(W, 'w:after', '120');
+  setNoticeFont(notesHeading);
 
   for (const [index, note] of notes.entries()) {
     const line = note.additional ? extraNoteStyle.cloneNode(true) : paragraph(note.key);
     const next = notes[index + 1];
-    // Use the same CJK face as the preview for the new Japanese paragraphs.
-    // The template's Meiryo fallback can drop glyphs around punctuation in Writer.
-    for (const font of line.getElementsByTagNameNS(W, 'rFonts')) {
-      for (const script of ['ascii', 'hAnsi', 'eastAsia', 'cs']) {
-        font.setAttributeNS(W, 'w:' + script, 'Noto Sans CJK JP');
-      }
-    }
+    setNoticeFont(line);
     const lineSpacing = spacing(line);
     const props = line.firstElementChild;
     removeParagraphControl(line, 'keepLines');
@@ -393,6 +412,14 @@ export function zipStore(entries) {
 export function createWord(template, payload) {
   const { xml, frame } = fillDocument(template.documentXml, payload);
   const entries = new Map(Object.entries(template.entries).map(([name, encoded]) => [name, base64Bytes(encoded)]));
+  const fontsPath = 'word/fontTable.xml';
+  const fonts = new DOMParser().parseFromString(decoder.decode(entries.get(fontsPath)), 'application/xml');
+  const noticeFont = appendWord(fonts.documentElement, 'font', { name: NOTICE_FONT });
+  appendWord(noticeFont, 'altName', { val: 'Noto Sans CJK JP' });
+  appendWord(noticeFont, 'charset', { val: '80' });
+  appendWord(noticeFont, 'family', { val: 'swiss' });
+  appendWord(noticeFont, 'pitch', { val: 'variable' });
+  entries.set(fontsPath, encoder.encode(new XMLSerializer().serializeToString(fonts)));
   const relsPath = 'word/_rels/document.xml.rels';
   const rels = new DOMParser().parseFromString(decoder.decode(entries.get(relsPath)), 'application/xml');
   appendElement(rels.documentElement, PACKAGE_REL, 'Relationship', {

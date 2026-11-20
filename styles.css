@@ -301,9 +301,9 @@ legend {
 .paper.long .work-place { margin-left: 0; color: #111; font-size: 14pt; font-weight: normal; }
 .paper.long .work-place > span { background: transparent; }
 
-.notes-section { margin: 5mm 25mm 0; }
+.notes-section { margin: 5mm 25mm 0; font-family: Meiryo, "Noto Sans CJK JP", "Yu Gothic", sans-serif; }
 .notes-section > .part-label { margin-bottom: 6pt; }
-.notice-line { display: flex; gap: 2pt; color: #000; font-family: "Noto Sans CJK JP", Meiryo, "Yu Gothic", sans-serif; font-size: 14pt; line-height: 16pt; font-weight: bold; }
+.notice-line { display: flex; gap: 2pt; color: #000; font-size: 14pt; line-height: 16pt; font-weight: bold; }
 .notice-line + .notice-line { margin-top: 4pt; }
 .notice-line.red { color: #e00; }
 .notice-bullet { flex: none; }
