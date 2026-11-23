@@ -1,7 +1,7 @@
 /* Static browser app. The preview, browser print and Word share one notice payload. */
 import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
-  layoutWarnings, wordFilename, hasDraftInput, carryDraft, normalizeTimeInput,
+  layoutWarnings, wordFilename, hasDraftInput, carryDraft, dateParts, normalizeDateInput, normalizeTimeInput,
   additionalOptions, canSelectNotice, selectAdditionalNotice,
   noticeTitle, noticeWarnings, restrictionTimingWarnings, contactFields, exportCase, importCase, maxCaseBytes,
 } from './notice.js';
@@ -105,10 +105,22 @@ function inputMode(input) {
   return input.closest('[data-modeonly]')?.dataset.modeonly ?? mode;
 }
 
+function formatDateInput(value) {
+  return dateParts(value) ? value.replaceAll('-', '/') : value;
+}
+
 function updateForm() {
   $$('[data-modeonly]').forEach(node => { node.hidden = node.dataset.modeonly !== mode; });
   $$('[data-field]').forEach(input => {
-    input.value = drafts[inputMode(input)][input.dataset.field] ?? '';
+    const value = drafts[inputMode(input)][input.dataset.field] ?? '';
+    if (input.hasAttribute('data-date-input')) {
+      input.value = formatDateInput(value);
+      const picker = input.parentElement.querySelector('.native-date');
+      closeDateFallback(picker);
+      picker.value = dateParts(value) ? value : '';
+    } else {
+      input.value = value;
+    }
   });
   for (const input of ruleInputs) {
     const only = input.closest('[data-modeonly]')?.dataset.modeonly;
@@ -540,10 +552,10 @@ function render() {
   scheduleScale();
 }
 
-function describeField(input, errorId) {
+function describeField(input, errorId, statusId = errorId) {
   if (errorId) input.setAttribute('aria-invalid', 'true');
   else input.removeAttribute('aria-invalid');
-  const description = [fieldDescriptions.get(input), errorId].filter(Boolean).join(' ');
+  const description = [fieldDescriptions.get(input), statusId].filter(Boolean).join(' ');
   if (description) input.setAttribute('aria-describedby', description);
   else input.removeAttribute('aria-describedby');
 }
@@ -551,6 +563,14 @@ function describeField(input, errorId) {
 function renderFieldErrors(errors) {
   $$('[data-field]').forEach(input => {
     const message = inputMode(input) === mode ? errors.get(input.dataset.field) : '';
+    if (input.hasAttribute('data-date-input')) {
+      const hint = document.getElementById(`${input.id}Feedback`);
+      const date = dateParts(drafts[inputMode(input)][input.dataset.field]);
+      putText(hint.id, message || (date ? `${date.weekday}曜日` : ''));
+      hint.classList.toggle('field-error', !!message);
+      describeField(input, message && hint.id, hint.textContent && hint.id);
+      return;
+    }
     const time = input.hasAttribute('data-time-input');
     let hint = time ? input.parentElement.lastElementChild : input.nextElementSibling;
     if (message || time) {
@@ -843,6 +863,79 @@ function updateDraftField(input, value) {
   saveDrafts();
 }
 
+function closeDateFallback(picker) {
+  if (!picker.classList.contains('native-date-visible')) return;
+  picker.classList.remove('native-date-visible');
+  picker.tabIndex = -1;
+  picker.setAttribute('aria-hidden', 'true');
+}
+
+function initDateField(input) {
+  const picker = input.parentElement.querySelector('.native-date');
+  const button = input.parentElement.querySelector('.date-picker-button');
+  const readDate = () => {
+    const value = normalizeDateInput(input.value);
+    const pickerValue = dateParts(value) ? value : '';
+    if (picker.value !== pickerValue) picker.value = pickerValue;
+    if (drafts[inputMode(input)][input.dataset.field] !== value) updateDraftField(input, value);
+    return value;
+  };
+  input.addEventListener('input', readDate);
+  input.addEventListener('blur', () => { input.value = formatDateInput(readDate()); });
+
+  if (picker.type !== 'date') return;
+  picker.hidden = false;
+  button.hidden = false;
+
+  // iOS WebKit requires a tap on the date input itself to open its picker.
+  if (CSS.supports('-webkit-touch-callout', 'none')) {
+    picker.classList.add('native-date-touch');
+    picker.removeAttribute('aria-hidden');
+    picker.tabIndex = 0;
+    picker.addEventListener('pointerdown', readDate);
+    button.setAttribute('aria-hidden', 'true');
+    button.tabIndex = -1;
+  }
+
+  const closeFallback = () => {
+    if (!picker.classList.contains('native-date-visible')) return;
+    closeDateFallback(picker);
+    button.focus({ preventScroll: true });
+  };
+
+  button.addEventListener('click', () => {
+    if (picker.classList.contains('native-date-visible')) {
+      closeFallback();
+      return;
+    }
+    readDate();
+    if (typeof picker.showPicker === 'function') {
+      try {
+        picker.showPicker();
+        return;
+      } catch {
+        // Some contexts block showPicker but still allow the native input to be used directly.
+      }
+    }
+    picker.classList.add('native-date-visible');
+    picker.removeAttribute('aria-hidden');
+    picker.tabIndex = 0;
+    picker.focus();
+  });
+  picker.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && picker.classList.contains('native-date-visible')) {
+      event.preventDefault();
+      closeFallback();
+    }
+  });
+  picker.addEventListener('change', () => {
+    if (!picker.validity.valid) return;
+    input.value = formatDateInput(picker.value);
+    readDate();
+    closeFallback();
+  });
+}
+
 function initTimeField(input) {
   input.addEventListener('input', () => updateDraftField(input, normalizeTimeInput(input.value)));
   input.addEventListener('blur', () => {
@@ -879,7 +972,8 @@ function initTimeField(input) {
 function init() {
   $('#editorForm').addEventListener('submit', event => event.preventDefault());
   $$('[data-field]').forEach(input => {
-    if (input.hasAttribute('data-time-input')) initTimeField(input);
+    if (input.hasAttribute('data-date-input')) initDateField(input);
+    else if (input.hasAttribute('data-time-input')) initTimeField(input);
     else input.addEventListener('input', () => updateDraftField(input, input.value));
   });
   for (const input of ruleInputs) input.addEventListener('change', () => {

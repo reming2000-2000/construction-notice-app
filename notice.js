@@ -195,7 +195,7 @@ export function restoreDrafts(saved) {
     const legacy = !Object.hasOwn(previous, 'restrictionMode') || !Object.hasOwn(previous, 'resumeMode');
     for (const key of Object.keys(draft)) {
       if (typeof draft[key] === 'string' && typeof previous[key] === 'string') {
-        draft[key] = previous[key];
+        draft[key] = ['startDate', 'endDate', 'resumeDate'].includes(key) ? normalizeDateInput(previous[key]) : previous[key];
       }
     }
     const current = Array.isArray(previous.selectedNotices);
@@ -363,6 +363,20 @@ export function dateParts(value) {
   return { year, month, day, weekday: '日月火水木金土'[date.getUTCDay()] };
 }
 
+function dateInputISO(value) {
+  const text = value.normalize('NFKC').trim().replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
+  const match = /^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/.exec(text);
+  if (!match) return '';
+  const [, year, , month, day] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+export function normalizeDateInput(value) {
+  const date = dateInputISO(value);
+  if (dateParts(date)) return date;
+  return value.trim() ? value : '';
+}
+
 function monthParts(value) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value) || value.startsWith('0000-')) return null;
   return value.split('-').map(Number);
@@ -429,11 +443,15 @@ function timestamp(date, time) {
   return dateParts(date) && validTime(time) ? `${date}T${time}` : '';
 }
 
-function requireDateTime(errors, draft, prefix, description) {
-  const dateKey = `${prefix}Date`;
-  const timeKey = `${prefix}Time`;
-  if (!dateParts(draft[dateKey])) errors.set(dateKey, `${description}日を入力してください。`);
-  requireTime(errors, timeKey, draft[timeKey], `${description}時刻`);
+function requireDate(errors, key, value, label) {
+  const date = dateParts(value);
+  if (date) return date;
+  const input = value?.trim();
+  const candidate = input && dateInputISO(input);
+  if (!input) errors.set(key, `${label}を入力してください。`);
+  else if (candidate && !dateParts(candidate)) errors.set(key, '存在しない日付です。日付を確認してください。');
+  else errors.set(key, `${label}は西暦から入力してください（例 2026/12/18）。`);
+  return null;
 }
 
 function requireTime(errors, key, value, label) {
@@ -463,7 +481,8 @@ function validateVehicleRules(errors, mode, draft, work) {
   }
 
   if (draft.selectedNotices.includes('resume') && draft.resumeMode === 'custom') {
-    requireDateTime(errors, draft, 'resume', '利用再開');
+    requireDate(errors, 'resumeDate', draft.resumeDate, '利用再開日');
+    requireTime(errors, 'resumeTime', draft.resumeTime, '利用再開時刻');
     const resume = timestamp(draft.resumeDate, draft.resumeTime);
     const end = timestamp(work.endDate, work.endTime);
     if (end && resume && resume < end) {
@@ -481,10 +500,8 @@ export function validate(mode, draft) {
   if (!noticeTitle(draft)) errors.set('title', '案内文タイトルを入力してください。');
   if (!monthParts(draft.issueMonth)) errors.set('issueMonth', '発行年月を入力してください。');
 
-  const start = dateParts(draft.startDate);
-  const end = mode === 'long' ? dateParts(draft.endDate) : start;
-  if (!start) errors.set('startDate', '開始日を入力してください。');
-  if (mode === 'long' && !end) errors.set('endDate', '終了日を入力してください。');
+  const start = requireDate(errors, 'startDate', draft.startDate, '開始日');
+  const end = mode === 'long' ? requireDate(errors, 'endDate', draft.endDate, '終了日') : start;
   requireTime(errors, 'startTime', draft.startTime, '開始時刻');
   requireTime(errors, 'endTime', draft.endTime, '終了時刻');
 

@@ -58,10 +58,26 @@
         </fieldset>
         <fieldset>
           <legend><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>工事日時</legend>
-          <p class="help" id="timeEntryHelp">時刻は数字だけでも入力できます（915 → 09:15）。曜日は日付から自動計算します。</p>
+          <p class="help"><span id="dateEntryHelp">日付は8桁でも入力できます（20261218 → 2026/12/18）。</span> <span id="timeEntryHelp">時刻は数字だけでも入力できます（915 → 09:15）。</span></p>
           <div class="field-grid schedule-fields">
-            <label class="field schedule-start-day"><span>開始日 <em>必須</em></span><input type="date" data-field="startDate" required /></label>
-            <label class="field" data-modeonly="long" hidden><span>終了日 <em>必須</em></span><input type="date" data-field="endDate" required /></label>
+            <div class="field date-field schedule-start-day">
+              <label for="startDate"><span>開始日 <em>必須</em></span></label>
+              <div class="date-entry">
+                <input id="startDate" type="text" inputmode="numeric" data-field="startDate" data-date-input placeholder="YYYY/MM/DD" aria-describedby="dateEntryHelp" required />
+                <button class="date-picker-button" type="button" aria-haspopup="dialog" aria-label="開始日をカレンダーで選ぶ" hidden><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg></button>
+                <input class="native-date" type="date" min="0001-01-01" max="9999-12-31" tabindex="-1" aria-hidden="true" aria-label="開始日のカレンダー" hidden />
+              </div>
+              <span class="date-feedback" id="startDateFeedback" aria-live="polite"></span>
+            </div>
+            <div class="field date-field" data-modeonly="long" hidden>
+              <label for="endDate"><span>終了日 <em>必須</em></span></label>
+              <div class="date-entry">
+                <input id="endDate" type="text" inputmode="numeric" data-field="endDate" data-date-input placeholder="YYYY/MM/DD" aria-describedby="dateEntryHelp" required />
+                <button class="date-picker-button" type="button" aria-haspopup="dialog" aria-label="終了日をカレンダーで選ぶ" hidden><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg></button>
+                <input class="native-date" type="date" min="0001-01-01" max="9999-12-31" tabindex="-1" aria-hidden="true" aria-label="終了日のカレンダー" hidden />
+              </div>
+              <span class="date-feedback" id="endDateFeedback" aria-live="polite"></span>
+            </div>
             <div class="field time-field">
               <label for="startTime"><span>開始時刻 <em>必須</em></span></label>
               <input id="startTime" type="text" inputmode="numeric" data-field="startTime" data-time-input="start" placeholder="09:00" aria-describedby="timeEntryHelp" required />
@@ -175,7 +191,15 @@
               </select>
             </label>
             <div class="field-grid conditional-fields" id="resumeCustomFields" hidden>
-              <label class="field"><span>利用再開日 <em>必須</em></span><input type="date" data-field="resumeDate" required /></label>
+              <div class="field date-field">
+                <label for="resumeDate"><span>利用再開日 <em>必須</em></span></label>
+                <div class="date-entry">
+                  <input id="resumeDate" type="text" inputmode="numeric" data-field="resumeDate" data-date-input placeholder="YYYY/MM/DD" aria-describedby="dateEntryHelp" required />
+                  <button class="date-picker-button" type="button" aria-haspopup="dialog" aria-label="利用再開日をカレンダーで選ぶ" hidden><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg></button>
+                  <input class="native-date" type="date" min="0001-01-01" max="9999-12-31" tabindex="-1" aria-hidden="true" aria-label="利用再開日のカレンダー" hidden />
+                </div>
+                <span class="date-feedback" id="resumeDateFeedback" aria-live="polite"></span>
+              </div>
               <div class="field time-field">
                 <label for="resumeTime"><span>利用再開時刻 <em>必須</em></span></label>
                 <input id="resumeTime" type="text" inputmode="numeric" data-field="resumeTime" data-time-input="end" placeholder="17:00" aria-describedby="timeEntryHelp" required />
