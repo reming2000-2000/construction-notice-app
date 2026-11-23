@@ -336,17 +336,22 @@ function fillDocument(templateXml, payload) {
 
   const afterSchedule = notesHeading.isConnected ? notesHeading : contactHeading;
   if (compactSchedule) {
-    // The short form has no location block. Keep only the clearance below the frame.
+    // The short form without a location already has about 6 mm below the frame.
     takeSpacerLines(scheduleEnd, afterSchedule);
     spacing(notesHeading).setAttributeNS(W, 'w:before', '880');
   } else {
     const work = paragraph(mode === 'short' ? 'location' : 'workDescription');
     replaceSpacers(scheduleEnd, work.previousElementSibling);
-    if (notesHeading.isConnected) replaceSpacers(work, notesHeading);
-    else takeSpacerLines(work, afterSchedule);
+    if (notesHeading.isConnected) {
+      replaceSpacers(work, notesHeading);
+      const headingSpacing = spacing(notesHeading);
+      // This template's frame is anchored above the heading. Add 1.5 pt to its existing clearance.
+      const before = Number(headingSpacing.getAttributeNS(W, 'before'));
+      headingSpacing.setAttributeNS(W, 'w:before', String(before + 30));
+    } else takeSpacerLines(work, afterSchedule);
   }
   keepScheduleTogether(scheduleHeading.previousElementSibling, afterSchedule);
-  spacing(notesHeading).setAttributeNS(W, 'w:after', '120');
+  spacing(notesHeading).setAttributeNS(W, 'w:after', '160');
   setNoticeFont(notesHeading);
 
   for (const [index, note] of notes.entries()) {
@@ -361,8 +366,8 @@ function fillDocument(templateXml, payload) {
     for (const attribute of ['left', 'hanging']) indent.setAttributeNS(W, 'w:' + attribute, note.additional ? '240' : '320');
     props.getElementsByTagNameNS(W, 'ind')[0]?.remove();
     lineSpacing.after(indent);
-    lineSpacing.setAttributeNS(W, 'w:line', '320');
-    if (next) lineSpacing.setAttributeNS(W, 'w:after', '80');
+    lineSpacing.setAttributeNS(W, 'w:line', '360');
+    if (next) lineSpacing.setAttributeNS(W, 'w:after', '100');
     for (const color of line.getElementsByTagNameNS(W, 'color')) {
       color.setAttributeNS(W, 'w:val', note.red ? 'EE0000' : '000000');
     }
