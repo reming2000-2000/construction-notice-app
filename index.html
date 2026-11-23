@@ -11,6 +11,16 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+  <svg class="icon-definitions no-print" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="0" height="0">
+    <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-14 5h3m4 0h3"/></symbol>
+    <symbol id="icon-park" viewBox="0 0 24 24"><path d="m5 13 2-5h10l2 5M5 18v2m14-2v2M7 15h2m6 0h2"/><rect x="3" y="12" width="18" height="6" rx="2"/></symbol>
+    <symbol id="icon-move" viewBox="0 0 24 24"><path d="m4 14 2-4h8l2 4M4 19v2m12-2v2M6 16h2m4 0h2m3-11h5m-3-2 3 2-3 2"/><rect x="2" y="13" width="16" height="6" rx="2"/></symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8v.1"/></symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.5 15.3A9 9 0 0 1 9 3.8a9 9 0 1 0 11.5 11.5Z"/></symbol>
+    <symbol id="icon-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.1M4 12h.1M4 18h.1"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+  </svg>
   <header class="topbar no-print">
     <div class="brand"><h1 lang="en">Construction Information Tool（C.I.T）</h1></div>
     <div class="actions">
@@ -27,6 +37,10 @@
   </header>
   <div class="shell">
     <aside class="editor no-print" aria-label="工事案内文入力フォーム">
+      <details id="inputErrors" class="editor-details input-feedback" hidden>
+        <summary id="inputErrorSummary">入力エラー</summary>
+        <ul id="warningBox" class="error-list" aria-label="入力エラー"></ul>
+      </details>
       <form id="editorForm" autocomplete="off" novalidate>
         <fieldset>
           <legend>基本情報</legend>
@@ -43,34 +57,39 @@
           </details>
         </fieldset>
         <fieldset>
-          <legend>工事日時</legend>
-          <p class="help" id="timeEntryHelp">時刻は30分刻みで選べます。細かな時刻は「時刻を入力」を選びます（例：08:15）。</p>
-          <div class="field-grid">
-            <label class="field"><span>開始日 <em>必須</em></span><input type="date" data-field="startDate" required /></label>
-            <div class="field time-field">
-              <label for="startTime"><span>開始時刻 <em>必須</em></span></label>
-              <div class="time-entry">
-                <select id="startTime" data-field="startTime" data-time-select required><option value="">時刻を選択</option></select>
-                <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="開始時刻を時分で入力" />
-              </div>
-            </div>
+          <legend><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>工事日時</legend>
+          <p class="help" id="timeEntryHelp">時刻は数字だけでも入力できます（915 → 09:15）。曜日は日付から自動計算します。</p>
+          <div class="field-grid schedule-fields">
+            <label class="field schedule-start-day"><span>開始日 <em>必須</em></span><input type="date" data-field="startDate" required /></label>
             <label class="field" data-modeonly="long" hidden><span>終了日 <em>必須</em></span><input type="date" data-field="endDate" required /></label>
             <div class="field time-field">
+              <label for="startTime"><span>開始時刻 <em>必須</em></span></label>
+              <input id="startTime" type="text" inputmode="numeric" data-field="startTime" data-time-input="start" placeholder="09:00" aria-describedby="timeEntryHelp" required />
+            </div>
+            <div class="field time-field">
               <label for="endTime"><span>終了時刻 <em>必須</em></span></label>
-              <div class="time-entry">
-                <select id="endTime" data-field="endTime" data-time-select required><option value="">時刻を選択</option></select>
-                <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="終了時刻を時分で入力" />
-              </div>
+              <input id="endTime" type="text" inputmode="numeric" data-field="endTime" data-time-input="end" placeholder="17:00" aria-describedby="timeEntryHelp" required />
             </div>
           </div>
-          <p class="help">曜日は日付から自動計算します。</p>
         </fieldset>
         <fieldset>
-          <legend>基本の注意事項（必須）</legend>
-          <div class="choice-group field" role="radiogroup" aria-label="車両の扱い">
-            <label class="choice-row"><input type="radio" name="vehicleMode" value="stay" required /><span>入出庫不可・車両残置可</span></label>
-            <label class="choice-row"><input type="radio" name="vehicleMode" value="leave" required /><span>入出庫不可・事前出庫必須</span></label>
-            <label class="choice-row"><input type="radio" name="vehicleMode" value="restricted" required /><span>入出庫不可のみ</span></label>
+          <legend id="vehicleQuestion">工事中、車はどうする必要がありますか？</legend>
+          <div class="choice-group field" role="radiogroup" aria-labelledby="vehicleQuestion" aria-required="true">
+            <label class="choice-row rule-card">
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-park"/></svg>
+              <span class="card-copy"><strong id="stayTitle">駐車したままでOK</strong><small id="stayHelp">工事中は入出庫できませんが、車を出す必要はありません。</small></span>
+              <input type="radio" name="vehicleMode" value="stay" aria-labelledby="stayTitle" aria-describedby="stayHelp" required />
+            </label>
+            <label class="choice-row rule-card">
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-move"/></svg>
+              <span class="card-copy"><strong id="leaveTitle">工事前に車を出す必要がある</strong><small id="leaveHelp">工事に伴い、事前に車両の出庫が必要です。</small></span>
+              <input type="radio" name="vehicleMode" value="leave" aria-labelledby="leaveTitle" aria-describedby="leaveHelp" required />
+            </label>
+            <label class="choice-row rule-card">
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-info"/></svg>
+              <span class="card-copy"><strong id="restrictedTitle">入出庫の制限だけを案内する</strong><small id="restrictedHelp">車を置いておけるかどうかは記載しません。</small></span>
+              <input type="radio" name="vehicleMode" value="restricted" aria-labelledby="restrictedTitle" aria-describedby="restrictedHelp" required />
+            </label>
             <p id="vehicleModeError" class="field-error" hidden></p>
           </div>
           <div id="departureSettings" hidden>
@@ -86,30 +105,40 @@
           </div>
         </fieldset>
         <fieldset>
-          <legend>入出庫制限期間</legend>
-          <div class="choice-group field" role="radiogroup" aria-label="入出庫制限期間">
-            <label class="choice-row" id="workRestrictionChoice"><input type="radio" name="restrictionMode" value="work" required /><span id="workRestrictionLabel">工事時間中のみ</span></label>
-            <label class="choice-row"><input type="radio" name="restrictionMode" value="continuous" required /><span id="continuousRestrictionLabel">工事期間中（夜間含む）</span></label>
-            <label class="choice-row" data-modeonly="long" hidden><input type="radio" name="restrictionMode" value="daily" required /><span>工事期間中の毎日、指定時間のみ入出庫不可</span></label>
-            <label class="choice-row" data-modeonly="long" hidden><input type="radio" name="restrictionMode" value="custom" required /><span>その他の利用制限</span></label>
+          <legend id="restrictionQuestion">駐車場はいつ使えなくなりますか？</legend>
+          <div class="choice-group field" role="radiogroup" aria-labelledby="restrictionQuestion" aria-required="true">
+            <label class="choice-row rule-card" id="workRestrictionChoice">
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-clock"/></svg>
+              <span class="card-copy"><strong id="workRestrictionLabel">作業している時間だけ</strong><small id="workRestrictionHelp">工事時間中は入出庫できません。</small></span>
+              <input type="radio" name="restrictionMode" value="work" aria-labelledby="workRestrictionLabel" aria-describedby="workRestrictionHelp" required />
+            </label>
+            <label class="choice-row rule-card">
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-moon"/></svg>
+              <span class="card-copy"><strong id="continuousRestrictionLabel">工事期間中ずっと</strong><small id="continuousRestrictionHelp">夜間も含めて入出庫できません。</small></span>
+              <input type="radio" name="restrictionMode" value="continuous" aria-labelledby="continuousRestrictionLabel" aria-describedby="continuousRestrictionHelp" required />
+            </label>
+            <label class="choice-row rule-card" data-modeonly="long" hidden>
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg>
+              <span class="card-copy"><strong id="dailyRestrictionLabel">毎日、決まった時間だけ</strong><small id="dailyRestrictionHelp">指定した時間帯のみ入出庫できません。</small></span>
+              <input type="radio" name="restrictionMode" value="daily" aria-labelledby="dailyRestrictionLabel" aria-describedby="dailyRestrictionHelp" required />
+            </label>
+            <label class="choice-row rule-card" data-modeonly="long" hidden>
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-list"/></svg>
+              <span class="card-copy"><strong id="customRestrictionLabel">その他の時間帯</strong><small id="customRestrictionHelp">日によって利用制限時間が異なる場合などに使用します。</small></span>
+              <input type="radio" name="restrictionMode" value="custom" aria-labelledby="customRestrictionLabel" aria-describedby="customRestrictionHelp" required />
+            </label>
             <p id="restrictionModeError" class="field-error" hidden></p>
           </div>
           <div id="dailyRestrictionFields" hidden>
-            <p class="help">土日・休工日も含めて毎日同じ時間帯に制限する場合に使います。例外がある場合は「その他の利用制限」を選んでください。</p>
+            <p class="help">土日・休工日も同じ時間帯に制限します。例外がある場合は「その他の時間帯」を選びます。</p>
             <div class="field-grid conditional-fields">
               <div class="field time-field">
                 <label for="dailyStartTime"><span>毎日の制限開始時刻 <em>必須</em></span></label>
-                <div class="time-entry">
-                  <select id="dailyStartTime" data-field="dailyStartTime" data-time-select><option value="">時刻を選択</option></select>
-                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：09:15" aria-label="毎日の制限開始時刻を時分で入力" />
-                </div>
+                <input id="dailyStartTime" type="text" inputmode="numeric" data-field="dailyStartTime" data-time-input="start" placeholder="09:00" aria-describedby="timeEntryHelp" required />
               </div>
               <div class="field time-field">
                 <label for="dailyEndTime"><span>毎日の制限終了時刻 <em>必須</em></span></label>
-                <div class="time-entry">
-                  <select id="dailyEndTime" data-field="dailyEndTime" data-time-select><option value="">時刻を選択</option></select>
-                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：17:15" aria-label="毎日の制限終了時刻を時分で入力" />
-                </div>
+                <input id="dailyEndTime" type="text" inputmode="numeric" data-field="dailyEndTime" data-time-input="end" placeholder="17:00" aria-describedby="timeEntryHelp" required />
               </div>
             </div>
           </div>
@@ -117,6 +146,10 @@
             <span>入出庫制限の内容 <em>必須</em></span>
             <textarea data-field="customRestriction" rows="3" placeholder="例：12月14日・15日は9時～17時、12月16日は終日入出庫できません。"></textarea>
           </label>
+          <div class="rule-preview" id="rulePreview" hidden>
+            <h3>案内文に載る内容</h3>
+            <p id="rulePreviewText" aria-live="polite"></p>
+          </div>
           <label class="field">
             <span>入出庫制限の注意事項の文字色</span>
             <select data-field="restrictionColor">
@@ -145,10 +178,7 @@
               <label class="field"><span>利用再開日 <em>必須</em></span><input type="date" data-field="resumeDate" required /></label>
               <div class="field time-field">
                 <label for="resumeTime"><span>利用再開時刻 <em>必須</em></span></label>
-                <div class="time-entry">
-                  <select id="resumeTime" data-field="resumeTime" data-time-select required><option value="">時刻を選択</option></select>
-                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：08:15" aria-label="利用再開時刻を時分で入力" />
-                </div>
+                <input id="resumeTime" type="text" inputmode="numeric" data-field="resumeTime" data-time-input="end" placeholder="17:00" aria-describedby="timeEntryHelp" required />
               </div>
             </div>
           </div>
@@ -160,33 +190,33 @@
               <input type="text" data-field="targetSpaces" maxlength="80" placeholder="例：12番・13番" />
             </label>
           </details>
+          <details id="freeNoticeDetails" class="editor-details">
+            <summary>自由入力の注意事項 <span id="freeNoticeStatus" class="detail-status"></span></summary>
+            <div id="noteChoices"></div>
+            <button id="addNoteButton" class="button secondary" type="button">注意事項を追加</button>
+            <p class="help note-storage">「文例に登録」で、次回もこのブラウザから選べます。</p>
+            <p id="noteStatus" class="help" role="status" hidden></p>
+            <div id="noteEditors"></div>
+            <template id="noteEditorTemplate">
+              <div class="note-line">
+                <div class="note-actions">
+                  <label><input type="checkbox" data-include-note /> <span></span></label>
+                  <div class="note-editor-buttons">
+                    <button class="button" type="button" data-move-note="-1">上へ</button>
+                    <button class="button" type="button" data-move-note="1">下へ</button>
+                    <button class="button" type="button" data-save-example>文例に登録</button>
+                    <button class="button" type="button" data-delete-note>削除</button>
+                  </div>
+                </div>
+                <textarea rows="2" data-note-text placeholder="例：作業中は騒音が発生する場合があります。"></textarea>
+              </div>
+            </template>
+          </details>
         </fieldset>
         <fieldset data-modeonly="short">
           <legend>作業場所（任意）</legend>
           <label class="field"><span>号機・場所</span><input type="text" data-field="location" maxlength="50" placeholder="例：2号機　※向かって右側" /></label>
         </fieldset>
-        <details id="freeNoticeDetails" class="editor-details">
-          <summary>自由入力の注意事項 <span id="freeNoticeStatus" class="detail-status"></span></summary>
-          <div id="noteChoices"></div>
-          <button id="addNoteButton" class="button secondary" type="button">注意事項を追加</button>
-          <p class="help note-storage">「文例に登録」で、次回もこのブラウザから選べます。</p>
-          <p id="noteStatus" class="help" role="status" hidden></p>
-          <div id="noteEditors"></div>
-          <template id="noteEditorTemplate">
-            <div class="note-line">
-              <div class="note-actions">
-                <label><input type="checkbox" data-include-note /> <span></span></label>
-                <div class="note-editor-buttons">
-                  <button class="button" type="button" data-move-note="-1">上へ</button>
-                  <button class="button" type="button" data-move-note="1">下へ</button>
-                  <button class="button" type="button" data-save-example>文例に登録</button>
-                  <button class="button" type="button" data-delete-note>削除</button>
-                </div>
-              </div>
-              <textarea rows="2" data-note-text placeholder="例：作業中は騒音が発生する場合があります。"></textarea>
-            </div>
-          </template>
-        </details>
         <fieldset>
           <legend>施工会社・お問い合わせ</legend>
           <div class="field-grid">
@@ -212,9 +242,9 @@
     <main class="preview-panel" aria-label="A4プレビュー">
       <div class="preview-head no-print">
         <div><strong>A4プレビュー</strong><span>画面・ブラウザ印刷は参考表示です。Wordとは改行やページ送りが異なることがあります。</span></div>
-        <div id="previewStatus" class="status" role="status"></div>
+        <div id="previewStatus" class="status" role="status" hidden></div>
       </div>
-      <ul id="warningBox" class="warnings no-print" aria-label="入力エラーと確認事項" hidden></ul>
+      <ul id="previewWarnings" class="warnings no-print" aria-label="配布前の確認事項（警告）" hidden></ul>
       <p id="exportStatus" class="export-status no-print" role="status" hidden></p>
       <div class="paper-scroller" id="paperScroller">
         <div id="paperHolder" class="paper-holder">
@@ -262,7 +292,7 @@
     </div>
   </dialog>
   <dialog id="distributionDialog" class="distribution-dialog no-print" aria-labelledby="reviewTitle" aria-describedby="reviewDescription">
-    <h2 id="reviewTitle">配布前の確認</h2>
+    <h2 id="reviewTitle"><svg class="ui-icon" aria-hidden="true"><use href="#icon-check"/></svg>配布前の確認</h2>
     <p id="reviewDescription">案内に載る日時、車両の扱い、連絡先を確認してください。</p>
     <dl class="review-summary">
       <div>

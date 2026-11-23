@@ -1,7 +1,7 @@
 /* Static browser app. The preview, browser print and Word share one notice payload. */
 import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
-  layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput,
+  layoutWarnings, wordFilename, hasDraftInput, carryDraft, normalizeTimeInput,
   additionalOptions, canSelectNotice, selectAdditionalNotice,
   noticeTitle, noticeWarnings, restrictionTimingWarnings, contactFields, exportCase, importCase, maxCaseBytes,
 } from './notice.js';
@@ -22,6 +22,7 @@ let textWarnings = [];
 const printMedia = window.matchMedia('print');
 const choices = [];
 const ruleInputs = $$('input[name="vehicleMode"], input[name="restrictionMode"]');
+const fieldDescriptions = new Map($$('#editorForm [aria-describedby]').map(input => [input, input.getAttribute('aria-describedby')]));
 const titleInput = $('[data-field="title"]');
 
 function putText(id, text) {
@@ -104,30 +105,10 @@ function inputMode(input) {
   return input.closest('[data-modeonly]')?.dataset.modeonly ?? mode;
 }
 
-function timeEditor(select) {
-  return select.closest('.time-entry').querySelector('[data-time-custom]');
-}
-
-function setTimeField(select, value) {
-  select.querySelector('[data-saved-time]')?.remove();
-  const editor = timeEditor(select);
-  if (validTime(value) && !/:(00|30)$/.test(value)) {
-    const option = new Option(`${value}（設定済み）`, value);
-    option.dataset.savedTime = '';
-    select.add(option, select.querySelector('[value="custom"]'));
-  }
-  const custom = value && !validTime(value);
-  select.value = custom ? 'custom' : value;
-  editor.value = custom ? value : '';
-  editor.hidden = !custom;
-}
-
 function updateForm() {
   $$('[data-modeonly]').forEach(node => { node.hidden = node.dataset.modeonly !== mode; });
   $$('[data-field]').forEach(input => {
-    const value = drafts[inputMode(input)][input.dataset.field] ?? '';
-    if (input.hasAttribute('data-time-select')) setTimeField(input, value);
-    else input.value = value;
+    input.value = drafts[inputMode(input)][input.dataset.field] ?? '';
   });
   for (const input of ruleInputs) {
     const only = input.closest('[data-modeonly]')?.dataset.modeonly;
@@ -176,8 +157,8 @@ function updateVehicleFields(draft) {
   const workChoice = $('#workRestrictionChoice');
   workChoice.hidden = long && !legacyWork;
   workChoice.querySelector('input').disabled = workChoice.hidden;
-  putText('workRestrictionLabel', legacyWork ? '工事時間中のみ（旧下書きの設定）' : '工事時間中のみ');
-  putText('continuousRestrictionLabel', long ? '工事期間中は終日入出庫不可' : '工事期間中（夜間含む）');
+  putText('workRestrictionLabel', legacyWork ? '作業している時間だけ（旧下書き）' : '作業している時間だけ');
+  putText('continuousRestrictionHelp', long ? '工事開始から終了まで、夜間も含めて入出庫できません。' : '夜間も含めて入出庫できません。');
   $('#dailyRestrictionFields').hidden = !long || draft.restrictionMode !== 'daily';
   $('#customRestrictionField').hidden = !long || draft.restrictionMode !== 'custom';
   $('#departureSettings').hidden = !long || draft.vehicleMode !== 'leave';
@@ -260,6 +241,10 @@ function renderNotes(payload) {
   }
   putText('vNotesHeading', payload.values.notesHeading);
   $('#vNotesSection').hidden = !payload.notes.length;
+
+  const rules = payload.notes.filter(note => !note.additional || note.generated || note.optionId === 'spaces');
+  $('#rulePreview').hidden = !rules.length;
+  putText('rulePreviewText', rules.map(({ text }) => `◆ ${text}`).join('\n'));
 }
 
 function updateNotes() {
@@ -531,9 +516,7 @@ function render() {
     const errorId = `${input.name}Error`;
     document.getElementById(errorId).hidden = !error;
     putText(errorId, error || '');
-    input.setAttribute('aria-invalid', String(!!error));
-    if (error) input.setAttribute('aria-describedby', errorId);
-    else input.removeAttribute('aria-describedby');
+    describeField(input, error && errorId);
   }
   const conflicts = noticeWarnings(payload);
   const summaries = [
@@ -547,43 +530,50 @@ function render() {
     $('#' + id).classList.toggle('needs-attention', warning);
   }
   textWarnings = [
-    ...[...errors].map(([field, message]) => ({ field, message })),
     ...conflictItems(conflicts),
     ...restrictionTimingWarnings(mode, draft),
     ...layoutWarnings(mode, draft, payload).map(message => ({ message })),
   ];
   renderFieldErrors(errors);
+  renderInputErrors(errors);
   updateButtons(errors.size > 0);
   scheduleScale();
+}
+
+function describeField(input, errorId) {
+  if (errorId) input.setAttribute('aria-invalid', 'true');
+  else input.removeAttribute('aria-invalid');
+  const description = [fieldDescriptions.get(input), errorId].filter(Boolean).join(' ');
+  if (description) input.setAttribute('aria-describedby', description);
+  else input.removeAttribute('aria-describedby');
 }
 
 function renderFieldErrors(errors) {
   $$('[data-field]').forEach(input => {
     const message = inputMode(input) === mode ? errors.get(input.dataset.field) : '';
-    const time = input.closest('.time-entry');
-    const anchor = time || input;
-    const controls = time ? [input, timeEditor(input)] : [input];
-    let hint = anchor.nextElementSibling;
-    if (message) {
+    const time = input.hasAttribute('data-time-input');
+    let hint = time ? input.parentElement.lastElementChild : input.nextElementSibling;
+    if (message || time) {
       if (!hint?.classList.contains('field-error')) {
         hint = document.createElement('span');
         hint.className = 'field-error';
         hint.id = `error-${input.dataset.field}`;
-        anchor.after(hint);
+        if (time) input.parentElement.append(hint);
+        else input.after(hint);
       }
-      hint.textContent = message;
-      for (const control of controls) {
-        control.setAttribute('aria-invalid', 'true');
-        control.setAttribute('aria-describedby', hint.id);
-      }
+      putText(hint.id, message || '');
     } else if (hint?.classList.contains('field-error')) {
       hint.remove();
-      for (const control of controls) {
-        control.removeAttribute('aria-invalid');
-        control.removeAttribute('aria-describedby');
-      }
     }
+    describeField(input, message && hint.id);
   });
+}
+
+function renderInputErrors(errors) {
+  const details = $('#inputErrors');
+  details.hidden = errors.size === 0;
+  putText('inputErrorSummary', `入力エラー ${errors.size}件`);
+  renderIssueList($('#warningBox'), [...errors].map(([field, message]) => ({ field, message })));
 }
 
 function updateButtons(invalid = validate(mode, drafts[mode]).size > 0) {
@@ -612,14 +602,11 @@ function scalePreview() {
   paper.style.transform = `scale(${scale})`;
 
   const warnings = previewWarnings(textWarnings);
-  const box = $('#warningBox');
+  const box = $('#previewWarnings');
   box.hidden = warnings.length === 0;
-  const signature = JSON.stringify(warnings);
-  if (box.dataset.signature !== signature) {
-    box.dataset.signature = signature;
-    box.replaceChildren(...warningItems(warnings));
-  }
-  putText('previewStatus', warnings.length ? `${warnings.length}件の確認項目` : '入力内容を確認できます');
+  renderIssueList(box, warnings);
+  putText('previewStatus', warnings.length ? `配布前の確認 ${warnings.length}件` : '');
+  $('#previewStatus').hidden = warnings.length === 0;
 }
 
 function previewOverflows() {
@@ -658,8 +645,15 @@ function focusInput(input) {
   for (let node = input?.parentElement; node; node = node.parentElement) {
     if (node.tagName === 'DETAILS') node.open = true;
   }
-  if (input?.hasAttribute('data-time-select') && !timeEditor(input).hidden) input = timeEditor(input);
   input?.focus();
+}
+
+function renderIssueList(list, items) {
+  const signature = JSON.stringify(items);
+  if (list.dataset.signature !== signature) {
+    list.dataset.signature = signature;
+    list.replaceChildren(...warningItems(items));
+  }
 }
 
 function warningItems(items) {
@@ -849,33 +843,43 @@ function updateDraftField(input, value) {
   saveDrafts();
 }
 
-function initTimeField(select) {
-  select.add(new Option('時刻を入力', 'custom'));
-  for (let hour = 0; hour < 24; hour++) {
-    for (const minute of ['00', '30']) {
-      const time = `${String(hour).padStart(2, '0')}:${minute}`;
-      select.add(new Option(time, time));
-    }
-  }
-  const editor = timeEditor(select);
-  select.addEventListener('change', () => {
-    const custom = select.value === 'custom';
-    editor.hidden = !custom;
-    if (custom) {
-      editor.value = drafts[inputMode(select)][select.dataset.field];
-      editor.focus();
-      editor.select();
-    } else {
-      updateDraftField(select, select.value);
+function initTimeField(input) {
+  input.addEventListener('input', () => updateDraftField(input, normalizeTimeInput(input.value)));
+  input.addEventListener('blur', () => {
+    const time = normalizeTimeInput(input.value);
+    input.value = time;
+    if (drafts[inputMode(input)][input.dataset.field] !== time) updateDraftField(input, time);
+  });
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      input.blur();
     }
   });
-  editor.addEventListener('input', () => updateDraftField(select, normalizeTimeInput(editor.value)));
+  const presets = input.dataset.timeInput === 'start' ? ['08:00', '09:00', '10:00'] : ['16:00', '17:00', '18:00'];
+  const name = input.labels[0].textContent.replace(/\s*必須$/, '');
+  const group = document.createElement('div');
+  group.className = 'time-presets';
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', `よく使う${name}`);
+  for (const time of presets) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = time;
+    button.setAttribute('aria-label', `${name}を${time}にする`);
+    button.addEventListener('click', () => {
+      input.value = time;
+      updateDraftField(input, time);
+    });
+    group.append(button);
+  }
+  input.after(group);
 }
 
 function init() {
   $('#editorForm').addEventListener('submit', event => event.preventDefault());
   $$('[data-field]').forEach(input => {
-    if (input.hasAttribute('data-time-select')) initTimeField(input);
+    if (input.hasAttribute('data-time-input')) initTimeField(input);
     else input.addEventListener('input', () => updateDraftField(input, input.value));
   });
   for (const input of ruleInputs) input.addEventListener('change', () => {

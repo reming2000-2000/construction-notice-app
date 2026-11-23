@@ -374,8 +374,11 @@ export function validTime(value) {
 
 export function normalizeTimeInput(value) {
   const text = value.normalize('NFKC').trim();
-  const match = /^(\d{1,2}):?(\d{2})$/.exec(text);
-  return match ? `${match[1].padStart(2, '0')}:${match[2]}` : text;
+  if (!text) return '';
+  const match = /^(\d{1,2})(?::?(\d{2}))?$/.exec(text);
+  if (!match) return value;
+  const time = `${match[1].padStart(2, '0')}:${match[2] ?? '00'}`;
+  return validTime(time) ? time : value;
 }
 
 function fullWidth(value) {
@@ -430,7 +433,12 @@ function requireDateTime(errors, draft, prefix, description) {
   const dateKey = `${prefix}Date`;
   const timeKey = `${prefix}Time`;
   if (!dateParts(draft[dateKey])) errors.set(dateKey, `${description}日を入力してください。`);
-  if (!validTime(draft[timeKey])) errors.set(timeKey, `${description}時刻を入力してください。`);
+  requireTime(errors, timeKey, draft[timeKey], `${description}時刻`);
+}
+
+function requireTime(errors, key, value, label) {
+  if (validTime(value)) return;
+  errors.set(key, value?.trim() ? `${label}を24時間表記で入力してください（例：09:15）。` : `${label}を入力してください。`);
 }
 
 function resumePoint(draft, work) {
@@ -440,14 +448,14 @@ function resumePoint(draft, work) {
 }
 
 function validateVehicleRules(errors, mode, draft, work) {
-  if (!Object.hasOwn(vehicleLabels, draft.vehicleMode)) errors.set('vehicleMode', '基本の注意事項を選択してください。');
-  if (!restrictionModes(mode).includes(draft.restrictionMode)) errors.set('restrictionMode', '入出庫制限期間を選択してください。');
+  if (!Object.hasOwn(vehicleLabels, draft.vehicleMode)) errors.set('vehicleMode', '工事中の車の扱いを選んでください。');
+  if (!restrictionModes(mode).includes(draft.restrictionMode)) errors.set('restrictionMode', '駐車場が使えない時間帯を選んでください。');
 
   if (mode === 'long' && draft.restrictionMode === 'daily') {
-    if (!validTime(draft.dailyStartTime)) errors.set('dailyStartTime', '毎日の制限開始時刻を入力してください。');
-    if (!validTime(draft.dailyEndTime)) errors.set('dailyEndTime', '毎日の制限終了時刻を入力してください。');
+    requireTime(errors, 'dailyStartTime', draft.dailyStartTime, '毎日の制限開始時刻');
+    requireTime(errors, 'dailyEndTime', draft.dailyEndTime, '毎日の制限終了時刻');
     if (!errors.has('dailyStartTime') && !errors.has('dailyEndTime') && draft.dailyEndTime <= draft.dailyStartTime) {
-      errors.set('dailyEndTime', '制限終了時刻を開始時刻より後にしてください。日をまたぐ場合は「その他の利用制限」を使用してください。');
+      errors.set('dailyEndTime', '制限終了時刻を開始時刻より後にしてください。日をまたぐ場合は「その他の時間帯」を選んでください。');
     }
   }
   if (mode === 'long' && draft.restrictionMode === 'custom' && !noticeText(draft.customRestriction)) {
@@ -477,8 +485,8 @@ export function validate(mode, draft) {
   const end = mode === 'long' ? dateParts(draft.endDate) : start;
   if (!start) errors.set('startDate', '開始日を入力してください。');
   if (mode === 'long' && !end) errors.set('endDate', '終了日を入力してください。');
-  if (!validTime(draft.startTime)) errors.set('startTime', '開始時刻を入力してください。');
-  if (!validTime(draft.endTime)) errors.set('endTime', '終了時刻を入力してください。');
+  requireTime(errors, 'startTime', draft.startTime, '開始時刻');
+  requireTime(errors, 'endTime', draft.endTime, '終了時刻');
 
   const endDate = mode === 'long' ? draft.endDate : draft.startDate;
   if (start && end && endDate < draft.startDate) {
