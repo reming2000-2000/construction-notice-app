@@ -277,6 +277,10 @@ function setIntroRuns(field, parts) {
   const original = field.parentNode;
   for (const { text, red } of parts) {
     const run = original.cloneNode(true);
+    if (red) {
+      const color = run.getElementsByTagNameNS(W, 'color')[0];
+      color.before(appendWord(run.firstElementChild, 'b'), appendWord(run.firstElementChild, 'bCs'));
+    }
     setRunColor(run, red ? 'EE0000' : '000000');
     setRunText(run.getElementsByTagNameNS(W, 't')[0], text);
     original.before(run);

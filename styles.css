@@ -386,7 +386,7 @@ legend .ui-icon, .distribution-dialog h2 .ui-icon { margin-inline-end: 6px; colo
 .intro { margin: 14.3mm 25mm 0; color: #000; }
 .paper.long .intro { margin-top: 8mm; }
 .intro p { margin: 0; }
-.intro-date { color: #e00; }
+.intro-date { color: #e00; font-weight: bold; }
 .closure { font-weight: bold; }
 
 .outline-box {

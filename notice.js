@@ -644,6 +644,7 @@ export function noticePayload(mode, draft) {
     recipient: cleanText(draft.recipient),
     issuer,
     title: noticeTitle(draft) || '［案内文タイトル未入力］',
+    intro: `平素より、${property}の機械式駐車装置をご利用いただきありがとうございます。`,
     contact: [
       `${contractor}：${phone}`,
       person && `（担当：${person}）`,
@@ -655,7 +656,6 @@ export function noticePayload(mode, draft) {
   if (mode === 'short') {
     const location = cleanText(draft.location);
     Object.assign(values, {
-      intro: `平素より${property}の機械式駐車場をご利用いただきありがとうございます。`,
       introDate: introParts.map(part => part.text).join(''),
       closure: notes.length ? '下記の工事日時と注意事項をご確認ください。' : '下記の工事日時をご確認ください。',
       mainDate: date,
@@ -665,7 +665,6 @@ export function noticePayload(mode, draft) {
     });
   } else {
     Object.assign(values, {
-      intro: `平素より${property}をご利用いただきありがとうございます。`,
       closure: notes.length
         ? '工事期間中のご利用については、下記の注意事項をご確認ください。'
         : '下記の工事期間・作業内容をご確認ください。',
