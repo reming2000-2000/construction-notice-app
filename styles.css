@@ -171,6 +171,11 @@ legend {
 }
 .date-field label, .time-field label { min-height: 1.4em; font-size: 12px; }
 .date-field .date-feedback { min-height: 1.4em; font-size: 11px; line-height: 1.4; font-weight: 500; }
+.issue-mode { display: flex; flex-wrap: wrap; gap: 6px; }
+.issue-mode .choice-row { padding: 6px 9px; }
+.issuer-row + .issuer-row { margin-top: 8px; }
+.issuer-tools { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.issuer-tools .button { padding: 4px 7px; }
 .field input[data-time-input] {
   min-height: 46px;
   padding: 8px 10px;
@@ -366,6 +371,7 @@ legend .ui-icon, .distribution-dialog h2 .ui-icon { margin-inline-end: 6px; colo
   text-align: center;
 }
 .issue, .issuer { text-align: right; min-height: 17.9pt; }
+.issuer { white-space: pre-line; }
 .issue { margin-left: 29mm; }
 .recipient { min-height: 17.9pt; }
 .notice-title {

@@ -47,8 +47,45 @@
           <div class="field-grid">
             <label class="field wide"><span>物件名 <em>必須</em></span><input type="text" data-field="propertyName" maxlength="80" placeholder="例：〇〇ビル" required /></label>
             <label class="field wide"><span>工事内容 <em>必須</em></span><input type="text" data-field="workDescription" maxlength="100" placeholder="例：〇〇の交換作業" required /></label>
-            <label class="field"><span>発行年月 <em>必須</em></span><input type="month" data-field="issueMonth" required /></label>
+            <div class="field wide">
+              <span id="issueDateModeLabel">発行日の表示</span>
+              <div class="issue-mode" role="radiogroup" aria-labelledby="issueDateModeLabel">
+                <label class="choice-row"><input type="radio" name="issueDateMode" value="month" checked />吉日で表示</label>
+                <label class="choice-row"><input type="radio" name="issueDateMode" value="date" />日付を指定</label>
+              </div>
+            </div>
+            <label class="field" id="issueMonthField"><span>発行年月 <em>必須</em></span><input type="month" data-field="issueMonth" required /></label>
+            <div class="field date-field" id="issueDateField" hidden>
+              <label for="issueDate"><span>発行日 <em>必須</em></span></label>
+              <div class="date-entry">
+                <input id="issueDate" type="text" inputmode="numeric" data-field="issueDate" data-date-input placeholder="YYYY/MM/DD" aria-describedby="dateEntryHelp" required />
+                <button class="date-picker-button" type="button" aria-haspopup="dialog" aria-label="発行日をカレンダーで選ぶ" hidden><svg class="ui-icon" aria-hidden="true"><use href="#icon-calendar"/></svg></button>
+                <input class="native-date" type="date" min="0001-01-01" max="9999-12-31" tabindex="-1" aria-hidden="true" aria-label="発行日のカレンダー" hidden />
+              </div>
+              <span class="date-feedback" id="issueDateFeedback" aria-live="polite"></span>
+            </div>
             <label class="field"><span>宛名</span><input type="text" data-field="recipient" maxlength="40" placeholder="機械式駐車場 ご利用者 様" /></label>
+            <div class="field wide" role="group" aria-labelledby="issuerLabel">
+              <div><span id="issuerLabel">発行者</span><span id="issuerLinkStatus" class="detail-status">施工会社名と連動中</span></div>
+              <div id="issuerEditors"></div>
+              <div class="note-editor-buttons">
+                <button class="button secondary" id="addIssuerButton" type="button">＋ 発行者を追加</button>
+                <button class="button" id="resetIssuerButton" type="button" hidden>施工会社名に戻す</button>
+              </div>
+              <template id="issuerEditorTemplate">
+                <div class="issuer-row">
+                  <div class="issuer-tools" hidden>
+                    <span></span>
+                    <div class="note-editor-buttons">
+                      <button class="button" type="button" data-move-issuer="-1">上へ</button>
+                      <button class="button" type="button" data-move-issuer="1">下へ</button>
+                      <button class="button" type="button" data-delete-issuer>削除</button>
+                    </div>
+                  </div>
+                  <input type="text" data-issuer-name placeholder="例：〇〇マンション管理組合" />
+                </div>
+              </template>
+            </div>
           </div>
           <details id="titleDetails" class="editor-details">
             <summary>タイトルを個別に変更 <span id="titleDetailStatus" class="detail-status"></span></summary>

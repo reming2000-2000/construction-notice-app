@@ -311,9 +311,20 @@ function fillDocument(templateXml, payload) {
   const frame = setScheduleFrame(document, payload, scheduleHeading);
 
   replaceSpacers(paragraph('issuer'), paragraph('title'));
+  let introDate = fields.get('introDate');
+  if (!introDate) {
+    // The long template uses one placeholder for the entire introduction.
+    // Copy its formatting before adding the template's title-to-greeting space.
+    const greeting = paragraph('intro');
+    const dateLine = greeting.cloneNode(false);
+    const dateRun = fields.get('intro').parentNode.cloneNode(true);
+    dateLine.append(greeting.firstElementChild.cloneNode(true), dateRun);
+    greeting.after(dateLine);
+    introDate = dateRun.getElementsByTagNameNS(W, 't')[0];
+  }
   replaceSpacers(paragraph('title'), paragraph('intro'));
 
-  const optional = ['recipient', 'notesHeading', ...Object.keys(values).filter(key => /^notice[1-6]$/.test(key))];
+  const optional = ['recipient', 'issuer', 'notesHeading', ...Object.keys(values).filter(key => /^notice[1-6]$/.test(key))];
   optional.push(mode === 'short' ? 'notice2Detail' : 'resume');
   for (const key of optional) {
     if (!values[key]) paragraph(key).remove();
@@ -371,12 +382,11 @@ function fillDocument(templateXml, payload) {
     width.setAttributeNS(W, 'w:val', '92');
     runProperties.insertBefore(width, runProperties.getElementsByTagNameNS(W, 'sz')[0]);
   }
-  const datedIntro = mode === 'short' ? 'introDate' : 'intro';
   setRunColor(fields.get('closure').parentNode, '000000');
   for (const [key, field] of fields) {
-    if (key === datedIntro) setIntroRuns(field, introParts);
-    else setRunText(field, values[key]);
+    if (field !== introDate) setRunText(field, values[key]);
   }
+  setIntroRuns(introDate, introParts);
   placeContactAtBottom(contactHeading, paragraph('contact'));
   const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     new XMLSerializer().serializeToString(document.documentElement);

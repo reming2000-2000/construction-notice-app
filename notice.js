@@ -79,6 +79,8 @@ const vehicleLabels = {
 };
 
 export const contactFields = ['issuerName', 'contactPerson', 'contactPhone', 'contactHours'];
+const publicationFields = ['issueDateMode', 'issueDate', 'issuers'];
+const dateFields = ['issueDate', 'startDate', 'endDate', 'resumeDate'];
 
 export function noticeTitle(draft) {
   if (draft.titleMode === 'manual') return cleanText(draft.title);
@@ -94,6 +96,9 @@ export function noticeTitle(draft) {
 export function createDraft(mode, now = new Date()) {
   const common = {
     issueMonth: `${String(now.getFullYear()).padStart(4, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+    issueDateMode: 'month',
+    issueDate: '',
+    issuers: [],
     recipient: '機械式駐車場 ご利用者 様',
     propertyName: '',
     workDescription: '',
@@ -140,7 +145,7 @@ export function hasDraftInput(mode, draft) {
   return Object.keys(defaults).some(key => {
     if (contactFields.includes(key)) return false;
     if (key === 'additionalNotes') return draft[key].some(note => noticeText(note.text));
-    if (key === 'selectedNotices') return draft[key].length > 0;
+    if (key === 'selectedNotices' || key === 'issuers') return draft[key]?.length > 0;
     if (key === 'noticeOverrides') return Object.keys(draft[key]).length > 0;
     return draft[key] !== defaults[key];
   });
@@ -154,6 +159,8 @@ export function carryDraft(from, to, source, destination) {
     if (!Object.hasOwn(destination, key) || vehicleFields.has(key)) continue;
     if (key === 'additionalNotes') {
       result.additionalNotes = source.additionalNotes.map(note => ({ ...note }));
+    } else if (key === 'issuers') {
+      result.issuers = [...(source.issuers ?? [])];
     } else if (key === 'selectedNotices') {
       result.selectedNotices = [
         ...source.selectedNotices.filter(id => !individualNotices.includes(id)),
@@ -195,9 +202,11 @@ export function restoreDrafts(saved) {
     const legacy = !Object.hasOwn(previous, 'restrictionMode') || !Object.hasOwn(previous, 'resumeMode');
     for (const key of Object.keys(draft)) {
       if (typeof draft[key] === 'string' && typeof previous[key] === 'string') {
-        draft[key] = ['startDate', 'endDate', 'resumeDate'].includes(key) ? normalizeDateInput(previous[key]) : previous[key];
+        draft[key] = dateFields.includes(key) ? normalizeDateInput(previous[key]) : previous[key];
       }
     }
+    if (draft.issueDateMode !== 'date') draft.issueDateMode = 'month';
+    if (Array.isArray(previous.issuers)) draft.issuers = previous.issuers.filter(name => typeof name === 'string');
     const current = Array.isArray(previous.selectedNotices);
     if (!Object.hasOwn(previous, 'titleMode') && cleanText(draft.title)) draft.titleMode = 'manual';
     if (draft.titleMode !== 'manual') draft.titleMode = 'auto';
@@ -405,6 +414,15 @@ function dateLabel(date, withYear = true) {
   return `${year}${fullWidth(date.month)}月${fullWidth(date.day)}日（${date.weekday}）`;
 }
 
+function issueLabel(draft) {
+  if (draft.issueDateMode === 'date') {
+    const date = dateParts(draft.issueDate);
+    return date ? fullWidth(`${draft.issueDate.slice(0, 4)}年${date.month}月${date.day}日`) : '［発行日未入力］';
+  }
+  const month = monthParts(draft.issueMonth);
+  return month ? fullWidth(`${draft.issueMonth.slice(0, 4)}年${month[1]}月吉日`) : '［発行年月未入力］';
+}
+
 function timeLabel(time) {
   return validTime(time) ? fullWidth(time) : '［時刻未入力］';
 }
@@ -498,7 +516,8 @@ export function validate(mode, draft) {
     if (!cleanText(draft[key])) errors.set(key, `${label}を入力してください。`);
   }
   if (!noticeTitle(draft)) errors.set('title', '案内文タイトルを入力してください。');
-  if (!monthParts(draft.issueMonth)) errors.set('issueMonth', '発行年月を入力してください。');
+  if (draft.issueDateMode === 'date') requireDate(errors, 'issueDate', draft.issueDate, '発行日');
+  else if (!monthParts(draft.issueMonth)) errors.set('issueMonth', '発行年月を入力してください。');
 
   const start = requireDate(errors, 'startDate', draft.startDate, '開始日');
   const end = mode === 'long' ? requireDate(errors, 'endDate', draft.endDate, '終了日') : start;
@@ -599,7 +618,6 @@ function collectNotes(mode, draft, work) {
 }
 
 export function noticePayload(mode, draft) {
-  const month = monthParts(draft.issueMonth);
   const start = dateParts(draft.startDate);
   const end = mode === 'long' ? dateParts(draft.endDate) : start;
   const fullEnd = !!(start && end && start.year !== end.year);
@@ -609,25 +627,25 @@ export function noticePayload(mode, draft) {
   const endTime = timeLabel(draft.endTime);
   const property = cleanText(draft.propertyName) || '［物件名未入力］';
   const work = cleanText(draft.workDescription) || '［工事内容未入力］';
-  const issuer = cleanText(draft.issuerName) || '［施工会社名未入力］';
+  const contractor = cleanText(draft.issuerName) || '［施工会社名未入力］';
+  const issuers = draft.issuers?.length ? draft.issuers.map(cleanText).filter(Boolean) : [contractor];
+  const issuer = issuers.length === 1 && issuers[0] === contractor ? `施工会社：${contractor}` : issuers.join('\n');
   const phone = cleanText(draft.contactPhone) || '［電話番号未入力］';
   const person = cleanText(draft.contactPerson);
   const hours = cleanText(draft.contactHours);
   const workPeriod = workSpan(mode, draft);
   const { notes, summary } = collectNotes(mode, draft, workPeriod);
   const introParts = [
-    { text: mode === 'long' ? `平素より${property}をご利用いただきありがとうございます。` : '', red: false },
     { text: mode === 'long' ? `${date}～${lastDay}` : date, red: true },
     { text: `に、「${work}」を行います。`, red: false },
-  ].filter(part => part.text);
-  const datedIntro = introParts.map(part => part.text).join('');
+  ];
   const values = {
-    issue: month ? `${fullWidth(draft.issueMonth.slice(0, 4))}年${fullWidth(month[1])}月吉日` : '［発行年月未入力］',
+    issue: issueLabel(draft),
     recipient: cleanText(draft.recipient),
-    issuer: `施工会社：${issuer}`,
+    issuer,
     title: noticeTitle(draft) || '［案内文タイトル未入力］',
     contact: [
-      `${issuer}：${phone}`,
+      `${contractor}：${phone}`,
       person && `（担当：${person}）`,
       hours && `受付時間：${hours}`,
     ].filter(Boolean).join(' '),
@@ -638,7 +656,7 @@ export function noticePayload(mode, draft) {
     const location = cleanText(draft.location);
     Object.assign(values, {
       intro: `平素より${property}の機械式駐車場をご利用いただきありがとうございます。`,
-      introDate: datedIntro,
+      introDate: introParts.map(part => part.text).join(''),
       closure: notes.length ? '下記の工事日時と注意事項をご確認ください。' : '下記の工事日時をご確認ください。',
       mainDate: date,
       timeRange: `${startTime} ～ ${endTime}`,
@@ -647,7 +665,7 @@ export function noticePayload(mode, draft) {
     });
   } else {
     Object.assign(values, {
-      intro: datedIntro,
+      intro: `平素より${property}をご利用いただきありがとうございます。`,
       closure: notes.length
         ? '工事期間中のご利用については、下記の注意事項をご確認ください。'
         : '下記の工事期間・作業内容をご確認ください。',
@@ -781,7 +799,7 @@ export function wordFilename(draft) {
 
 export const maxCaseBytes = 1024 * 1024;
 const caseFormat = 'construction-notice-draft';
-const caseVersion = 2;
+const caseVersion = 3;
 
 export function exportCase(mode, draft) {
   const text = JSON.stringify({ format: caseFormat, version: caseVersion, mode, title: noticeTitle(draft), draft }, null, 2);
@@ -800,7 +818,7 @@ export function importCase(text) {
     throw new Error('JSONファイルを読み取れませんでした。');
   }
   if (!isRecord(file) || file.format !== caseFormat) throw new Error('工事案内文の案件データを選択してください。');
-  if (file.version !== 1 && file.version !== caseVersion) throw new Error('このバージョンの案件データには対応していません。');
+  if (![1, 2, caseVersion].includes(file.version)) throw new Error('このバージョンの案件データには対応していません。');
   const { mode, draft } = file;
   if (!['short', 'long'].includes(mode) || !isRecord(draft)) throw new Error('案内の種類または入力内容が不正です。');
   const fields = createDraft(mode);
@@ -811,10 +829,17 @@ export function importCase(text) {
       delete draft[key];
     }
   }
+  if (file.version < caseVersion) {
+    for (const key of publicationFields) {
+      delete fields[key];
+      delete draft[key];
+    }
+  }
   const options = additionalOptions.map(({ id }) => id);
   const customOptions = additionalOptions.filter(({ text }) => text).map(({ id }) => id);
   const allowedValues = {
     titleMode: ['auto', 'manual'],
+    issueDateMode: ['month', 'date'],
     vehicleMode: ['', ...Object.keys(vehicleLabels)],
     restrictionMode: ['', ...(oldCase ? Object.keys(restrictionCopy) : restrictionModes(mode))],
     departureNotice: Object.keys(departureLabels),
@@ -824,7 +849,9 @@ export function importCase(text) {
   const invalidFields = Object.entries(fields).some(([key, value]) =>
     typeof value === 'string' && (!Object.hasOwn(draft, key) || typeof draft[key] !== 'string' ||
       (allowedValues[key] && !allowedValues[key].includes(draft[key]))));
-  if (invalidFields || !Array.isArray(draft.selectedNotices) ||
+  const invalidIssuers = file.version === caseVersion &&
+    (!Array.isArray(draft.issuers) || draft.issuers.some(name => typeof name !== 'string'));
+  if (invalidFields || invalidIssuers || !Array.isArray(draft.selectedNotices) ||
       draft.selectedNotices.some(id => !options.includes(id)) || !isRecord(draft.noticeOverrides) ||
       Object.entries(draft.noticeOverrides).some(([key, value]) => !customOptions.includes(key) || typeof value !== 'string') ||
       !Array.isArray(draft.additionalNotes) || draft.additionalNotes.some(note =>

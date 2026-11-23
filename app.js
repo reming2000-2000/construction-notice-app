@@ -22,6 +22,7 @@ let textWarnings = [];
 const printMedia = window.matchMedia('print');
 const choices = [];
 const ruleInputs = $$('input[name="vehicleMode"], input[name="restrictionMode"]');
+const issueModeInputs = $$('input[name="issueDateMode"]');
 const fieldDescriptions = new Map($$('#editorForm [aria-describedby]').map(input => [input, input.getAttribute('aria-describedby')]));
 const titleInput = $('[data-field="title"]');
 
@@ -30,10 +31,9 @@ function putText(id, text) {
   if (node.textContent !== text) node.textContent = text;
 }
 
-function renderIntro(short, { values, introParts }) {
-  putText(short ? 'vIntro' : 'vIntroDate', short ? values.intro : '');
-  const dated = document.getElementById(short ? 'vIntroDate' : 'vIntro');
-  dated.replaceChildren(...introParts.map(({ text, red }) => {
+function renderIntro({ values, introParts }) {
+  putText('vIntro', values.intro);
+  $('#vIntroDate').replaceChildren(...introParts.map(({ text, red }) => {
     if (!red) return document.createTextNode(text);
     const date = document.createElement('span');
     date.className = 'intro-date';
@@ -132,6 +132,7 @@ function updateForm() {
   }
   renderNoteChoices();
   renderNoteEditors();
+  renderIssuerEditors();
   showNoteStatus();
   for (const key of Object.keys(modes)) {
     const button = $(`#${key}Button`);
@@ -475,12 +476,68 @@ function renderNoteEditors() {
   }));
 }
 
+function renderIssuerEditors(focusIndex) {
+  const list = $('#issuerEditors');
+  const template = $('#issuerEditorTemplate');
+  const draft = drafts[mode];
+  const names = draft.issuers.length ? draft.issuers : [draft.issuerName];
+  const multiple = names.length > 1;
+  list.replaceChildren(...names.map((name, index) => {
+    const row = template.content.firstElementChild.cloneNode(true);
+    const input = row.querySelector('[data-issuer-name]');
+    const tools = row.querySelector('.issuer-tools');
+    const label = multiple ? `発行者${index + 1}` : '発行者';
+    input.value = name;
+    input.setAttribute('aria-label', label);
+    input.addEventListener('input', () => {
+      draft.issuers[index] = input.value;
+      refreshDraft();
+    });
+    if (multiple) {
+      tools.hidden = false;
+      tools.firstElementChild.textContent = label;
+      for (const button of tools.querySelectorAll('[data-move-issuer]')) {
+        const next = index + Number(button.dataset.moveIssuer);
+        button.disabled = next < 0 || next >= names.length;
+        button.setAttribute('aria-label', `${label}を${button.textContent}移動`);
+        button.addEventListener('click', () => {
+          [names[index], names[next]] = [names[next], names[index]];
+          renderIssuerEditors(next);
+          refreshDraft();
+        });
+      }
+      const remove = tools.querySelector('[data-delete-issuer]');
+      remove.setAttribute('aria-label', `${label}を削除`);
+      remove.addEventListener('click', () => {
+        names.splice(index, 1);
+        renderIssuerEditors(Math.min(index, names.length - 1));
+        refreshDraft();
+      });
+    }
+    return row;
+  }));
+  list.children[focusIndex]?.querySelector('[data-issuer-name]').focus();
+}
+
+function updatePublicationFields(draft) {
+  const exactDate = draft.issueDateMode === 'date';
+  $('#issueMonthField').hidden = exactDate;
+  $('#issueDateField').hidden = !exactDate;
+  for (const input of issueModeInputs) input.checked = input.value === draft.issueDateMode;
+
+  const followsContractor = draft.issuers.length === 0;
+  putText('issuerLinkStatus', followsContractor ? '施工会社名と連動中' : '個別設定');
+  $('#resetIssuerButton').hidden = followsContractor;
+  if (followsContractor) $('#issuerEditors [data-issuer-name]').value = draft.issuerName;
+}
+
 function render() {
   const draft = drafts[mode];
   const payload = noticePayload(mode, draft);
   const values = payload.values;
   const short = mode === 'short';
   const paper = $('#paper');
+  updatePublicationFields(draft);
   updateVehicleFields(draft);
   updateNoticeChoices(draft, payload);
   if (vehicleConfirmation && vehicleConfirmation !== vehicleConfirmationKey(draft, payload)) {
@@ -494,15 +551,15 @@ function render() {
   putText('vRecipient', values.recipient);
   $('#vRecipient').hidden = !values.recipient;
   putText('vIssuer', values.issuer);
+  $('#vIssuer').hidden = !values.issuer;
   putText('vTitle', values.title);
-  renderIntro(short, payload);
+  renderIntro(payload);
   putText('vClosure', values.closure);
   putText('vMainDate', short ? values.mainDate : values.startLine);
   putText('vTimeRange', short ? values.timeRange : values.endLine);
   putText('vWorkLabel', short ? values.locationLabel : '【作業内容】');
   putText('vWorkPlace', short ? values.location : values.workDescription);
   putText('vContact', values.contact);
-  $('#vIntroDate').hidden = !short;
   $('#vWorkSection').hidden = short && !values.location;
   $('#legacyResume').hidden = !draft.legacyResumeText;
   $('#legacyVehicleNotes').hidden = !draft.legacyVehicleNotes;
@@ -856,11 +913,15 @@ function replaceDraft(next) {
   saveDrafts();
 }
 
-function updateDraftField(input, value) {
-  drafts[inputMode(input)][input.dataset.field] = value;
+function refreshDraft() {
   if (!exporting) showExportStatus();
   render();
   saveDrafts();
+}
+
+function updateDraftField(input, value) {
+  drafts[inputMode(input)][input.dataset.field] = value;
+  refreshDraft();
 }
 
 function closeDateFallback(picker) {
@@ -976,6 +1037,22 @@ function init() {
     else if (input.hasAttribute('data-time-input')) initTimeField(input);
     else input.addEventListener('input', () => updateDraftField(input, input.value));
   });
+  for (const input of issueModeInputs) input.addEventListener('change', () => {
+    drafts[mode].issueDateMode = input.value;
+    refreshDraft();
+  });
+  $('#addIssuerButton').onclick = () => {
+    const draft = drafts[mode];
+    if (!draft.issuers.length) draft.issuers.push(draft.issuerName);
+    draft.issuers.push('');
+    renderIssuerEditors(draft.issuers.length - 1);
+    refreshDraft();
+  };
+  $('#resetIssuerButton').onclick = () => {
+    drafts[mode].issuers = [];
+    renderIssuerEditors(0);
+    refreshDraft();
+  };
   for (const input of ruleInputs) input.addEventListener('change', () => {
     if (!input.checked) return;
     const draft = drafts[mode];
