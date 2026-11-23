@@ -545,7 +545,6 @@ function render() {
   }
   paper.classList.toggle('short', short);
   paper.classList.toggle('long', !short);
-  paper.classList.toggle('date-compact', payload.compactStart);
   paper.classList.toggle('compact-schedule', payload.compactSchedule);
   putText('vIssue', values.issue);
   putText('vRecipient', values.recipient);
@@ -555,8 +554,18 @@ function render() {
   putText('vTitle', values.title);
   renderIntro(payload);
   putText('vClosure', values.closure);
-  putText('vMainDate', short ? values.mainDate : values.startLine);
-  putText('vTimeRange', short ? values.timeRange : values.endLine);
+  $('#vShortSchedule').hidden = !short;
+  $('#vLongSchedule').hidden = short;
+  if (short) {
+    putText('vMainDate', values.mainDate);
+    putText('vTimeRange', values.timeRange);
+  } else {
+    putText('vStartDate', values.startLine.date);
+    putText('vStartTime', values.startLine.time);
+    putText('vScheduleSeparator', values.startLine.separator);
+    putText('vEndDate', values.endLine.date);
+    putText('vEndTime', values.endLine.time);
+  }
   putText('vWorkLabel', short ? values.locationLabel : '【作業内容】');
   putText('vWorkPlace', short ? values.location : values.workDescription);
   putText('vContact', values.contact);

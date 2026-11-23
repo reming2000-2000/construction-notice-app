@@ -288,6 +288,22 @@ function setIntroRuns(field, parts) {
   original.remove();
 }
 
+function setScheduleLine(field, { date, time, separator }) {
+  const dateRun = field.parentNode;
+  setRunText(field, date);
+  let last = dateRun;
+  for (const text of separator ? [time, separator] : [time]) {
+    const gap = dateRun.cloneNode(false);
+    const gapFormat = appendWord(gap, 'rPr');
+    appendWord(gapFormat, 'highlight', { val: 'none' });
+    appendWord(gap, 'tab');
+    const run = dateRun.cloneNode(true);
+    setRunText(run.getElementsByTagNameNS(W, 't')[0], text);
+    last.after(gap, run);
+    last = run;
+  }
+}
+
 function fillDocument(templateXml, payload) {
   const document = new DOMParser().parseFromString(templateXml, 'application/xml');
   if (document.documentElement.namespaceURI !== W || document.documentElement.localName !== 'document' ||
@@ -300,7 +316,7 @@ function fillDocument(templateXml, payload) {
     const match = /^@@(\w+)@@$/.exec(text.textContent);
     if (match) fields.set(match[1], text);
   }
-  const { values, mode, notes, compactStart, compactSchedule, introParts } = payload;
+  const { values, mode, notes, compactSchedule, introParts } = payload;
   if (fields.size !== Object.keys(values).length || [...fields.keys()].some(key => !Object.hasOwn(values, key))) {
     throw new Error('テンプレートの差し込み欄が一致しません。');
   }
@@ -377,23 +393,25 @@ function fillDocument(templateXml, payload) {
     }
   }
   if (mode === 'long') {
-    // A paragraph inset also keeps any wrapped continuation aligned.
     const indent = key => paragraph(key).getElementsByTagNameNS(W, 'ind')[0];
     const left = indent('startLine').getAttributeNS(W, 'firstLine');
+    // Match the preview's column offsets, with clearance for the template's character spacing.
+    const timeColumn = Number(left) + 5920;
     for (const key of ['startLine', 'endLine']) {
-      indent(key).removeAttributeNS(W, 'firstLine');
-      indent(key).setAttributeNS(W, 'w:left', left);
+      const inset = indent(key);
+      inset.removeAttributeNS(W, 'firstLine');
+      inset.setAttributeNS(W, 'w:left', left);
+      const tabs = appendWord(inset.parentNode, 'tabs');
+      inset.before(tabs);
+      appendWord(tabs, 'tab', { val: 'left', pos: String(timeColumn) });
+      appendWord(tabs, 'tab', { val: 'left', pos: String(timeColumn + 2200) });
     }
-  }
-  if (compactStart) {
-    const runProperties = fields.get('startLine').parentNode.getElementsByTagNameNS(W, 'rPr')[0];
-    const width = document.createElementNS(W, 'w:w');
-    width.setAttributeNS(W, 'w:val', '92');
-    runProperties.insertBefore(width, runProperties.getElementsByTagNameNS(W, 'sz')[0]);
   }
   setRunColor(fields.get('closure').parentNode, '000000');
   for (const [key, field] of fields) {
-    if (field !== introDate) setRunText(field, values[key]);
+    if (field === introDate) continue;
+    if (key === 'startLine' || key === 'endLine') setScheduleLine(field, values[key]);
+    else setRunText(field, values[key]);
   }
   setIntroRuns(introDate, introParts);
   placeContactAtBottom(contactHeading, paragraph('contact'));

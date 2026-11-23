@@ -324,8 +324,14 @@
             </div>
             <div class="outline-box">
               <div class="part-label">【工事期間】</div>
-              <div class="big-date"><span id="vMainDate"></span></div>
-              <div class="big-time"><span id="vTimeRange"></span></div>
+              <div id="vShortSchedule">
+                <div class="big-date"><span id="vMainDate"></span></div>
+                <div class="big-time"><span id="vTimeRange"></span></div>
+              </div>
+              <div class="big-date" id="vLongSchedule" hidden>
+                <div class="schedule-row"><span id="vStartDate"></span> <span id="vStartTime"></span> <span id="vScheduleSeparator"></span></div>
+                <div class="schedule-row"><span id="vEndDate"></span> <span id="vEndTime"></span></div>
+              </div>
               <div class="work-section" id="vWorkSection">
                 <div class="part-label" id="vWorkLabel">【作業場所】</div>
                 <div class="work-place"><span id="vWorkPlace"></span></div>

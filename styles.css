@@ -406,13 +406,14 @@ legend .ui-icon, .distribution-dialog h2 .ui-icon { margin-inline-end: 6px; colo
   font-weight: bold;
   line-height: 1.37;
 }
-.paper.date-compact .big-date > span {
-  display: inline-block;
+.schedule-row {
+  display: grid;
+  grid-template-columns: 14.55em minmax(5.25em, max-content) max-content;
+  column-gap: .25em;
   white-space: nowrap;
-  transform: scaleX(.92);
-  transform-origin: center left;
 }
-.big-date > span, .big-time > span, .work-place > span { background: #ff0; }
+.schedule-row > span { justify-self: start; }
+.big-date > span, .big-time > span, .schedule-row > span, .work-place > span { background: #ff0; }
 .notice-title > span, .big-date > span, .big-time > span, .work-place > span {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;

@@ -668,8 +668,8 @@ export function noticePayload(mode, draft) {
       closure: notes.length
         ? '工事期間中のご利用については、下記の注意事項をご確認ください。'
         : '下記の工事期間・作業内容をご確認ください。',
-      startLine: `${date} ${startTime} ～`,
-      endLine: `${lastDay} ${endTime}`,
+      startLine: { date, time: startTime, separator: '～' },
+      endLine: { date: lastDay, time: endTime },
       resume: '',
       workDescription: work,
     });
@@ -688,8 +688,6 @@ export function noticePayload(mode, draft) {
     compactSchedule: mode === 'short' && !values.location,
     workSchedule: spanLabel(workPeriod),
     vehicleSummary: summary,
-    // The longest full-width date plus time can wrap at the original 20 pt.
-    compactStart: mode === 'long' && start?.month >= 10 && start.day >= 10,
     // The long template has room for two work lines, and the short one for one location line.
     extraOutlineLines: mode === 'long'
       ? Math.max(0, Math.ceil(textWidth(work) / 30) - 2)
