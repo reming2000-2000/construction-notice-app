@@ -3,13 +3,14 @@ import {
   createDraft, restoreDrafts, sampleDraft, validate, noticePayload,
   layoutWarnings, wordFilename, hasDraftInput, carryDraft, validTime, normalizeTimeInput,
   additionalOptions, canSelectNotice, selectAdditionalNotice,
-  noticeTitle, noticeWarnings, contactFields, exportCase, importCase, maxCaseBytes,
+  noticeTitle, noticeWarnings, restrictionTimingWarnings, contactFields, exportCase, importCase, maxCaseBytes,
 } from './notice.js';
 import { loadWordTemplate, createWord } from './word.js';
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const storageKey = 'parkingNoticeDrafts';
+const confirmationStorageKey = 'parkingNoticeVehicleConfirmation';
 const modes = { short: '短期工事', long: '長期工事' };
 let exporting = false;
 let pendingReview = null;
@@ -66,6 +67,29 @@ function loadDraftState() {
 const initialState = loadDraftState();
 const { drafts, savedExamples } = initialState;
 let { mode, linked } = initialState;
+let vehicleConfirmation = null;
+try {
+  vehicleConfirmation = sessionStorage.getItem(confirmationStorageKey);
+} catch {
+  // Confirmation can still be reused in this page when session storage is unavailable.
+}
+
+function saveVehicleConfirmation(key) {
+  vehicleConfirmation = key;
+  try {
+    if (key === null) sessionStorage.removeItem(confirmationStorageKey);
+    else sessionStorage.setItem(confirmationStorageKey, key);
+  } catch {
+    // Keep the confirmation in memory.
+  }
+}
+
+function vehicleConfirmationKey(draft, payload) {
+  return JSON.stringify([
+    payload.mode, draft.propertyName, draft.workDescription, payload.workSchedule,
+    draft.vehicleMode, draft.restrictionMode, payload.vehicleSummary, payload.notes.map(note => note.text),
+  ]);
+}
 
 function saveDrafts() {
   try {
@@ -105,7 +129,11 @@ function updateForm() {
     if (input.hasAttribute('data-time-select')) setTimeField(input, value);
     else input.value = value;
   });
-  for (const input of ruleInputs) input.checked = input.value === drafts[mode][input.name];
+  for (const input of ruleInputs) {
+    const only = input.closest('[data-modeonly]')?.dataset.modeonly;
+    if (only) input.disabled = only !== mode;
+    input.checked = input.value === drafts[mode][input.name];
+  }
   for (const { option, editor } of choices) {
     if (editor) editor.value = drafts[mode].noticeOverrides[option.id] ?? option.text;
   }
@@ -142,6 +170,26 @@ function updateNoticeChoices(draft, payload) {
   $('#targetSpacesField').hidden = !draft.selectedNotices.includes('spaces') || !canSelectNotice(draft, 'spaces');
 }
 
+function updateVehicleFields(draft) {
+  const long = mode === 'long';
+  const legacyWork = long && draft.restrictionMode === 'work';
+  const workChoice = $('#workRestrictionChoice');
+  workChoice.hidden = long && !legacyWork;
+  workChoice.querySelector('input').disabled = workChoice.hidden;
+  putText('workRestrictionLabel', legacyWork ? '工事時間中のみ（旧下書きの設定）' : '工事時間中のみ');
+  putText('continuousRestrictionLabel', long ? '工事期間中は終日入出庫不可' : '工事期間中（夜間含む）');
+  $('#dailyRestrictionFields').hidden = !long || draft.restrictionMode !== 'daily';
+  $('#customRestrictionField').hidden = !long || draft.restrictionMode !== 'custom';
+  $('#departureSettings').hidden = !long || draft.vehicleMode !== 'leave';
+  const departureHelp = {
+    manager: '管理会社が別途案内することを確認できた場合に使ってください。',
+    start: '実際の出庫期限が工事開始時刻の場合に使ってください。',
+  };
+  const help = departureHelp[draft.departureNotice] || '';
+  $('#departureHelp').hidden = !help;
+  putText('departureHelp', help);
+}
+
 function showExportStatus(message = '', error = false) {
   const status = $('#exportStatus');
   status.hidden = !message;
@@ -172,9 +220,9 @@ function showModeStatus(message = '') {
 
 function switchDraft(next, carry) {
   if (carry) {
-    const base = linked ? drafts[next] : createDraft(next);
-    drafts[next] = carryDraft(mode, next, drafts[mode], base);
+    drafts[next] = carryDraft(mode, next, drafts[mode], drafts[next]);
   }
+  saveVehicleConfirmation(null);
   linked = carry;
   mode = next;
   if (!exporting) showExportStatus();
@@ -436,7 +484,11 @@ function render() {
   const values = payload.values;
   const short = mode === 'short';
   const paper = $('#paper');
+  updateVehicleFields(draft);
   updateNoticeChoices(draft, payload);
+  if (vehicleConfirmation && vehicleConfirmation !== vehicleConfirmationKey(draft, payload)) {
+    saveVehicleConfirmation(null);
+  }
   paper.classList.toggle('short', short);
   paper.classList.toggle('long', !short);
   paper.classList.toggle('date-compact', payload.compactStart);
@@ -497,6 +549,7 @@ function render() {
   textWarnings = [
     ...[...errors].map(([field, message]) => ({ field, message })),
     ...conflictItems(conflicts),
+    ...restrictionTimingWarnings(mode, draft),
     ...layoutWarnings(mode, draft, payload).map(message => ({ message })),
   ];
   renderFieldErrors(errors);
@@ -592,6 +645,7 @@ function listItems(items) {
 
 function conflictItems(conflicts) {
   return conflicts.map(({ note, message }) => {
+    if (note.field) return { field: note.field, message };
     if (Number.isInteger(note.freeIndex)) {
       return { target: `free-note-${note.freeIndex}`, message: `注意書き${note.freeIndex + 1}の確認。 ${message}` };
     }
@@ -622,7 +676,7 @@ function warningItems(items) {
         if ($('#distributionDialog').open) closeDistributionReview();
         const input = target ? document.getElementById(target) :
           $$('[data-field]').find(node => node.dataset.field === field && inputMode(node) === mode) ||
-          ruleInputs.find(node => node.name === field);
+          ruleInputs.find(node => node.name === field && !node.closest('label').hidden);
         focusInput(input);
       });
       row.append(' ', button);
@@ -656,13 +710,18 @@ function openDistributionReview(format) {
 
   const warnings = previewWarnings([
     ...conflictItems(noticeWarnings(payload)),
+    ...restrictionTimingWarnings(mode, draft),
     ...layoutWarnings(mode, draft, payload).map(message => ({ message })),
   ]);
   const list = $('#reviewWarnings');
   list.replaceChildren(...warningItems(warnings));
   list.hidden = warnings.length === 0;
 
-  pendingReview = { format, kind: mode, payload, filename: wordFilename(draft), draft: JSON.stringify(draft) };
+  const confirmationKey = vehicleConfirmationKey(draft, payload);
+  const check = $('#reviewVehicleCheck');
+  check.checked = vehicleConfirmation === confirmationKey;
+  $('#reviewConfirmButton').disabled = !check.checked;
+  pendingReview = { format, kind: mode, payload, confirmationKey, filename: wordFilename(draft), draft: JSON.stringify(draft) };
   dialog.showModal();
   $('#reviewBackButton').focus();
 }
@@ -674,12 +733,13 @@ function closeDistributionReview() {
 
 function confirmDistribution() {
   const confirmed = pendingReview;
-  if (!confirmed || !$('#distributionDialog').open) return;
+  if (!confirmed || !$('#distributionDialog').open || !$('#reviewVehicleCheck').checked) return;
   closeDistributionReview();
   if (mode !== confirmed.kind || JSON.stringify(drafts[mode]) !== confirmed.draft) {
     showExportStatus('入力内容が変更されました。もう一度、配布前の内容を確認してください。', true);
     return;
   }
+  saveVehicleConfirmation(confirmed.confirmationKey);
   if (confirmed.format === 'word') {
     void downloadWord(confirmed);
   } else {
@@ -773,6 +833,7 @@ function finishCase(confirmed) {
 }
 
 function replaceDraft(next) {
+  saveVehicleConfirmation(null);
   drafts[mode] = next;
   linked = false;
   showExportStatus();
@@ -876,6 +937,10 @@ function init() {
   $('#pdfButton').onclick = () => openDistributionReview('print');
   $('#wordButton').onclick = () => openDistributionReview('word');
   $('#reviewBackButton').onclick = closeDistributionReview;
+  $('#reviewVehicleCheck').onchange = event => {
+    $('#reviewConfirmButton').disabled = !event.target.checked;
+    if (!event.target.checked) saveVehicleConfirmation(null);
+  };
   $('#reviewConfirmButton').onclick = confirmDistribution;
   $('#distributionDialog').addEventListener('cancel', () => { pendingReview = null; });
   const observer = new ResizeObserver(scheduleScale);

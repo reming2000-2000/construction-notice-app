@@ -73,14 +73,50 @@
             <label class="choice-row"><input type="radio" name="vehicleMode" value="restricted" required /><span>入出庫不可のみ</span></label>
             <p id="vehicleModeError" class="field-error" hidden></p>
           </div>
+          <div id="departureSettings" hidden>
+            <label class="field">
+              <span>出庫期限に関する案内</span>
+              <select data-field="departureNotice">
+                <option value="unspecified">具体的な期限は記載しない</option>
+                <option value="manager">管理会社から別途案内する</option>
+                <option value="start">工事開始までに出庫する</option>
+              </select>
+            </label>
+            <p class="help" id="departureHelp" hidden></p>
+          </div>
         </fieldset>
         <fieldset>
           <legend>入出庫制限期間</legend>
           <div class="choice-group field" role="radiogroup" aria-label="入出庫制限期間">
-            <label class="choice-row"><input type="radio" name="restrictionMode" value="work" required /><span>工事時間中のみ</span></label>
-            <label class="choice-row"><input type="radio" name="restrictionMode" value="continuous" required /><span>工事期間中（夜間含む）</span></label>
+            <label class="choice-row" id="workRestrictionChoice"><input type="radio" name="restrictionMode" value="work" required /><span id="workRestrictionLabel">工事時間中のみ</span></label>
+            <label class="choice-row"><input type="radio" name="restrictionMode" value="continuous" required /><span id="continuousRestrictionLabel">工事期間中（夜間含む）</span></label>
+            <label class="choice-row" data-modeonly="long" hidden><input type="radio" name="restrictionMode" value="daily" required /><span>工事期間中の毎日、指定時間のみ入出庫不可</span></label>
+            <label class="choice-row" data-modeonly="long" hidden><input type="radio" name="restrictionMode" value="custom" required /><span>その他の利用制限</span></label>
             <p id="restrictionModeError" class="field-error" hidden></p>
           </div>
+          <div id="dailyRestrictionFields" hidden>
+            <p class="help">土日・休工日も含めて毎日同じ時間帯に制限する場合に使います。例外がある場合は「その他の利用制限」を選んでください。</p>
+            <div class="field-grid conditional-fields">
+              <div class="field time-field">
+                <label for="dailyStartTime"><span>毎日の制限開始時刻 <em>必須</em></span></label>
+                <div class="time-entry">
+                  <select id="dailyStartTime" data-field="dailyStartTime" data-time-select><option value="">時刻を選択</option></select>
+                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：09:15" aria-label="毎日の制限開始時刻を時分で入力" />
+                </div>
+              </div>
+              <div class="field time-field">
+                <label for="dailyEndTime"><span>毎日の制限終了時刻 <em>必須</em></span></label>
+                <div class="time-entry">
+                  <select id="dailyEndTime" data-field="dailyEndTime" data-time-select><option value="">時刻を選択</option></select>
+                  <input type="text" data-time-custom hidden inputmode="numeric" maxlength="5" placeholder="例：17:15" aria-label="毎日の制限終了時刻を時分で入力" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <label class="field" id="customRestrictionField" hidden>
+            <span>入出庫制限の内容 <em>必須</em></span>
+            <textarea data-field="customRestriction" rows="3" placeholder="例：12月14日・15日は9時～17時、12月16日は終日入出庫できません。"></textarea>
+          </label>
           <label class="field">
             <span>入出庫制限の注意事項の文字色</span>
             <select data-field="restrictionColor">
@@ -218,7 +254,7 @@
   <dialog id="draftSwitchDialog" class="distribution-dialog draft-switch-dialog no-print" aria-labelledby="switchDraftTitle" aria-describedby="switchDraftDescription switchDraftNote">
     <h2 id="switchDraftTitle">切り替え先の入力を選択</h2>
     <p id="switchDraftDescription">切り替え先に保存済みの入力があります。</p>
-    <p id="switchDraftNote">今の入力を引き継ぐと、切り替え先の保存済み入力が置き換わります。</p>
+    <p id="switchDraftNote">引き継ぐと、切り替え先の共通項目が置き換わります。車両の扱い・入出庫制限・個別の日程は切り替え先の設定を使います。</p>
     <div class="dialog-actions">
       <button id="switchCancelButton" class="button" type="button" autofocus>切り替えない</button>
       <button id="switchSavedButton" class="button secondary" type="button">保存済みの入力を使う</button>
@@ -246,7 +282,7 @@
         <dd id="reviewDeadline"></dd>
       </div>
       <div>
-        <dt>入出庫の停止期間</dt>
+        <dt>入出庫制限</dt>
         <dd id="reviewRestriction"></dd>
       </div>
       <div>
@@ -264,9 +300,13 @@
     </dl>
     <ul id="reviewWarnings" class="warnings" aria-label="配布前の確認事項" hidden></ul>
     <p id="reviewPrintHelp" hidden>印刷設定に「ヘッダーとフッター」がある場合は、オフにしてからPDFを保存・印刷してください。</p>
+    <label class="choice-row review-confirmation">
+      <input id="reviewVehicleCheck" type="checkbox" />
+      <span>上記の車両の扱いと利用制限が、実際の工事内容と相違ないことを確認しました。</span>
+    </label>
     <div class="dialog-actions">
       <button id="reviewBackButton" class="button secondary" type="button" autofocus>入力に戻る</button>
-      <button id="reviewConfirmButton" class="button primary" type="button">確認して出力</button>
+      <button id="reviewConfirmButton" class="button primary" type="button" disabled>確認して出力</button>
     </div>
   </dialog>
   <dialog id="caseDialog" class="distribution-dialog no-print" aria-labelledby="caseTitle" aria-describedby="caseDescription">

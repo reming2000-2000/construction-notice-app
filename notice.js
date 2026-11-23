@@ -24,6 +24,24 @@ const restrictionCopy = {
   work: '工事時間中は、車両の入出庫が一切できません。',
   continuous: '工事期間中は、昼夜を問わず車両の入出庫が一切できません。',
 };
+const departureLabels = {
+  unspecified: '具体的な期限は記載しない',
+  manager: '管理会社から別途案内する',
+  start: '工事開始までに出庫する',
+};
+const departureRequired = '工事に伴い、事前にお車の出庫が必要です。';
+const departureByStart = '工事開始までに、必ずお車を出庫してください。';
+const managerNotice = '出庫期限などの詳細については、管理会社より別途ご案内いたします。';
+const newLongFields = ['departureNotice', 'dailyStartTime', 'dailyEndTime', 'customRestriction'];
+const individualNotices = ['parking', 'resume', 'spaces'];
+const vehicleFields = new Set([
+  ...newLongFields, 'vehicleMode', 'restrictionMode', 'restrictionColor', 'targetSpaces',
+  'resumeMode', 'resumeDate', 'resumeTime', 'legacyVehicleNotes', 'legacyResumeText',
+]);
+
+function restrictionModes(mode) {
+  return mode === 'long' ? ['continuous', 'daily', 'custom', 'work'] : ['work', 'continuous'];
+}
 
 export function canSelectNotice(draft, id) {
   if (id === 'distribution') return draft.selectedNotices.includes('keys');
@@ -84,8 +102,8 @@ export function createDraft(mode, now = new Date()) {
     startDate: '',
     startTime: '',
     endTime: '',
-    vehicleMode: 'stay',
-    restrictionMode: 'work',
+    vehicleMode: mode === 'long' ? 'leave' : 'stay',
+    restrictionMode: mode === 'long' ? 'continuous' : 'work',
     restrictionColor: 'red',
     resumeMode: 'restriction',
     resumeDate: '',
@@ -110,6 +128,10 @@ export function createDraft(mode, now = new Date()) {
   return {
     ...common,
     endDate: '',
+    departureNotice: 'unspecified',
+    dailyStartTime: '',
+    dailyEndTime: '',
+    customRestriction: '',
   };
 }
 
@@ -129,13 +151,20 @@ export function carryDraft(from, to, source, destination) {
   const result = { ...destination };
 
   for (const key of Object.keys(sourceDefaults)) {
-    if (!Object.hasOwn(destination, key)) continue;
+    if (!Object.hasOwn(destination, key) || vehicleFields.has(key)) continue;
     if (key === 'additionalNotes') {
       result.additionalNotes = source.additionalNotes.map(note => ({ ...note }));
     } else if (key === 'selectedNotices') {
-      result.selectedNotices = [...source.selectedNotices];
+      result.selectedNotices = [
+        ...source.selectedNotices.filter(id => !individualNotices.includes(id)),
+        ...destination.selectedNotices.filter(id => individualNotices.includes(id)),
+      ];
     } else if (key === 'noticeOverrides') {
-      result.noticeOverrides = { ...source.noticeOverrides };
+      result.noticeOverrides = Object.fromEntries(Object.entries(source.noticeOverrides)
+        .filter(([id]) => !individualNotices.includes(id)));
+      if (Object.hasOwn(destination.noticeOverrides, 'parking')) {
+        result.noticeOverrides.parking = destination.noticeOverrides.parking;
+      }
     } else {
       result[key] = source[key];
     }
@@ -174,7 +203,12 @@ export function restoreDrafts(saved) {
     if (draft.titleMode !== 'manual') draft.titleMode = 'auto';
     if (legacy) restoreLegacyOptions(mode, draft, previous);
     if (!Object.hasOwn(vehicleLabels, draft.vehicleMode)) draft.vehicleMode = '';
-    if (!Object.hasOwn(restrictionCopy, draft.restrictionMode)) draft.restrictionMode = '';
+    if (!restrictionModes(mode).includes(draft.restrictionMode)) draft.restrictionMode = '';
+    if (mode === 'long' && !Object.hasOwn(departureLabels, draft.departureNotice)) draft.departureNotice = 'unspecified';
+    // Older confirmed drafts printed a start-time deadline whenever departure was required.
+    if (mode === 'long' && !Object.hasOwn(previous, 'departureNotice') && previous.vehicleMode === 'leave') {
+      draft.departureNotice = 'start';
+    }
     if (draft.restrictionColor !== 'black') draft.restrictionColor = 'red';
     if (draft.resumeMode !== 'custom') draft.resumeMode = 'restriction';
     draft.additionalNotes = restoreAdditionalNotes(mode, previous, legacy);
@@ -226,12 +260,19 @@ function migrateNoticeChoices(mode, draft, previous) {
     const end = timestamp(previous.restrictionEndDate, previous.restrictionEndTime);
     const isWorkSpan = start && end && start === timestamp(work.startDate, work.startTime) &&
       end === timestamp(work.endDate, work.endTime);
-    if (previous.restrictionMode === 'daily') {
+    if (previous.restrictionMode === 'daily' && mode === 'long' &&
+        validTime(previous.restrictionStartTime) && validTime(previous.restrictionEndTime) &&
+        previous.restrictionStartTime < previous.restrictionEndTime) {
+      draft.restrictionMode = 'daily';
+      draft.dailyStartTime = previous.restrictionStartTime;
+      draft.dailyEndTime = previous.restrictionEndTime;
+    } else if (previous.restrictionMode === 'daily') {
+      draft.restrictionMode = '';
       reminder.push(`以前の毎日の入出庫停止は ${previous.restrictionStartTime || '未入力'}～${previous.restrictionEndTime || '未入力'} です。`);
-    } else if (!isWorkSpan) {
-      reminder.push(`以前の入出庫停止期間は ${previous.restrictionStartDate || '未入力'} ${previous.restrictionStartTime || '未入力'}～${previous.restrictionEndDate || '未入力'} ${previous.restrictionEndTime || '未入力'} です。`);
+    } else {
+      draft.restrictionMode = isWorkSpan ? 'continuous' : '';
+      if (!isWorkSpan) reminder.push(`以前の入出庫停止期間は ${previous.restrictionStartDate || '未入力'} ${previous.restrictionStartTime || '未入力'}～${previous.restrictionEndDate || '未入力'} ${previous.restrictionEndTime || '未入力'} です。`);
     }
-    draft.restrictionMode = previous.restrictionMode === 'continuous' && isWorkSpan ? 'continuous' : '';
   }
   if (previous.vehicleMode === 'leave' && previous.deadlineDate && previous.deadlineTime &&
       timestamp(previous.deadlineDate, previous.deadlineTime) !== timestamp(work.startDate, work.startTime)) {
@@ -286,7 +327,6 @@ export function sampleDraft(mode) {
     issuerName: '架空設備株式会社',
     contactPerson: 'サンプル担当',
     contactPhone: '00-0000-0000',
-    restrictionMode: 'work',
     resumeMode: 'restriction',
   };
   if (mode === 'short') {
@@ -399,17 +439,29 @@ function resumePoint(draft, work) {
     : { date: work.endDate, time: work.endTime };
 }
 
-function validateVehicleRules(errors, draft, work) {
+function validateVehicleRules(errors, mode, draft, work) {
   if (!Object.hasOwn(vehicleLabels, draft.vehicleMode)) errors.set('vehicleMode', '基本の注意事項を選択してください。');
-  if (!Object.hasOwn(restrictionCopy, draft.restrictionMode)) errors.set('restrictionMode', '入出庫制限期間を選択してください。');
+  if (!restrictionModes(mode).includes(draft.restrictionMode)) errors.set('restrictionMode', '入出庫制限期間を選択してください。');
 
-  if (!draft.selectedNotices.includes('resume') || draft.resumeMode !== 'custom') return;
-  requireDateTime(errors, draft, 'resume', '利用再開');
-  const resume = timestamp(draft.resumeDate, draft.resumeTime);
-  const end = timestamp(work.endDate, work.endTime);
-  if (end && resume && resume < end) {
-    const key = draft.resumeDate === work.endDate ? 'resumeTime' : 'resumeDate';
-    errors.set(key, '利用再開予定を、工事終了日時以降にしてください。');
+  if (mode === 'long' && draft.restrictionMode === 'daily') {
+    if (!validTime(draft.dailyStartTime)) errors.set('dailyStartTime', '毎日の制限開始時刻を入力してください。');
+    if (!validTime(draft.dailyEndTime)) errors.set('dailyEndTime', '毎日の制限終了時刻を入力してください。');
+    if (!errors.has('dailyStartTime') && !errors.has('dailyEndTime') && draft.dailyEndTime <= draft.dailyStartTime) {
+      errors.set('dailyEndTime', '制限終了時刻を開始時刻より後にしてください。日をまたぐ場合は「その他の利用制限」を使用してください。');
+    }
+  }
+  if (mode === 'long' && draft.restrictionMode === 'custom' && !noticeText(draft.customRestriction)) {
+    errors.set('customRestriction', '入出庫制限の内容を入力してください。');
+  }
+
+  if (draft.selectedNotices.includes('resume') && draft.resumeMode === 'custom') {
+    requireDateTime(errors, draft, 'resume', '利用再開');
+    const resume = timestamp(draft.resumeDate, draft.resumeTime);
+    const end = timestamp(work.endDate, work.endTime);
+    if (end && resume && resume < end) {
+      const key = draft.resumeDate === work.endDate ? 'resumeTime' : 'resumeDate';
+      errors.set(key, '利用再開予定を、工事終了日時以降にしてください。');
+    }
   }
 }
 
@@ -437,7 +489,7 @@ export function validate(mode, draft) {
     errors.set('endTime', '終了時刻を開始時刻より後にしてください。');
   }
 
-  validateVehicleRules(errors, draft, workSpan(mode, draft));
+  validateVehicleRules(errors, mode, draft, workSpan(mode, draft));
   return errors;
 }
 
@@ -456,27 +508,37 @@ function spanLabel(span, endDateSeparator = ' ') {
 function resumeSentence(point, work) {
   const date = dateParts(point.date);
   if (!date || !validTime(point.time) || timestamp(point.date, point.time) < timestamp(work.endDate, work.endTime)) return '';
-  const [hour, minute] = point.time.split(':').map(Number);
   const year = date.year !== dateParts(work.startDate)?.year ? `${date.year}年` : '';
-  const time = `${hour}時${minute ? `${minute}分` : ''}`;
-  return `駐車場の利用再開は、${year}${date.month}月${date.day}日（${date.weekday}）${time}を予定しております。`;
+  return `駐車場の利用再開は、${year}${date.month}月${date.day}日（${date.weekday}）${hourMinute(point.time)}を予定しております。`;
+}
+
+function hourMinute(time) {
+  const [hour, minute] = time.split(':').map(Number);
+  return `${hour}時${minute ? `${minute}分` : ''}`;
+}
+
+function restrictionText(mode, draft) {
+  if (mode === 'long' && draft.restrictionMode === 'custom') return noticeText(draft.customRestriction);
+  if (mode === 'long' && draft.restrictionMode === 'daily') {
+    if (!validTime(draft.dailyStartTime) || !validTime(draft.dailyEndTime) || draft.dailyEndTime <= draft.dailyStartTime) return '';
+    return `工事期間中の各日${hourMinute(draft.dailyStartTime)}～${hourMinute(draft.dailyEndTime)}は、車両の入出庫が一切できません。`;
+  }
+  return Object.hasOwn(restrictionCopy, draft.restrictionMode) ? restrictionCopy[draft.restrictionMode] : '';
 }
 
 function collectNotes(mode, draft, work) {
   const short = mode === 'short';
-  const restriction = Object.hasOwn(restrictionCopy, draft.restrictionMode) ? restrictionCopy[draft.restrictionMode] : '';
+  const restriction = restrictionText(mode, draft);
+  const departure = draft.vehicleMode === 'leave' ? (short ? 'start' : draft.departureNotice) : '';
   const limited = draft.selectedNotices.includes('spaces') && canSelectNotice(draft, 'spaces');
   const spaces = cleanText(draft.targetSpaces);
   const parked = limited ? '対象車室以外の車両は入庫したままで問題ありません。' : '車両は入庫したままで問題ありません。';
-  const rule = draft.vehicleMode === 'leave' ? '工事開始までに、必ずお車を出庫してください。' :
+  const rule = departure ? (departure === 'start' ? departureByStart : departureRequired) :
     draft.vehicleMode === 'stay' ? parked : '';
   const point = resumePoint(draft, work);
   const resume = draft.selectedNotices.includes('resume') ? resumeSentence(point, work) : '';
-  const notes = [
-    { key: 'notice1', text: restriction, red: draft.restrictionColor !== 'black' },
-    { key: short ? 'notice2' : 'notice3', text: rule, red: draft.vehicleMode === 'leave' },
-  ].filter(note => note.text);
-  const added = new Set(notes.map(note => note.text.normalize('NFKC').replace(/\s/g, '')));
+  const notes = [];
+  const added = new Set();
   const append = (value, source) => {
     const text = noticeText(value);
     const normalized = text.normalize('NFKC').replace(/\s/g, '');
@@ -484,6 +546,10 @@ function collectNotes(mode, draft, work) {
     added.add(normalized);
     notes.push({ text, additional: true, red: source.optionId === 'spaces', ...source });
   };
+  append(restriction, { key: 'notice1', additional: false, red: draft.restrictionColor !== 'black',
+    field: !short && draft.restrictionMode === 'custom' ? 'customRestriction' : undefined });
+  append(rule, { key: short ? 'notice2' : 'notice3', additional: false, red: draft.vehicleMode === 'leave' });
+  if (departure === 'manager') append(managerNotice, { generated: true });
   for (const { id, text } of additionalOptions) {
     if (!draft.selectedNotices.includes(id) || !canSelectNotice(draft, id)) continue;
     const value = id === 'resume' ? resume :
@@ -498,9 +564,10 @@ function collectNotes(mode, draft, work) {
     notes,
     summary: {
       vehicle: vehicleLabels[draft.vehicleMode] || '要選択',
-      deadline: draft.vehicleMode === 'leave' || limited
-        ? `${limited ? '対象車室は' : ''}${dateTimeLabel(work.startDate, work.startTime)}（工事開始）まで` : '—',
-      restriction: restriction || '要選択',
+      deadline: departure === 'start' || limited
+        ? `${limited ? '対象車室は' : ''}${dateTimeLabel(work.startDate, work.startTime)}（工事開始）まで`
+        : departure ? departureLabels[departure] : '—',
+      restriction: !short && draft.restrictionMode === 'continuous' ? '工事期間中は終日入出庫不可' : restriction || '要入力・要選択',
       resume: resume || (draft.selectedNotices.includes('resume') ? '要入力' : '掲載しない'),
     },
   };
@@ -617,7 +684,7 @@ export function noticeWarnings(payload) {
   const restriction = payload.notes.find(note => note.key === 'notice1');
   const continuous = restriction?.text === restrictionCopy.continuous;
   const instructions = payload.notes.map(note => {
-    const result = { note, park: false, depart: false, permit: false };
+    const result = { note, park: false, depart: note.text === departureRequired, permit: false };
     for (const sentence of note.text.split(/[。\n]+/)) {
       // Treat only clear instructions as candidates. Avoid comparing a
       // conditional or limited vehicle instruction with a rule for every space.
@@ -634,12 +701,43 @@ export function noticeWarnings(payload) {
   const requiresDeparture = instructions.some(item => item.depart);
   const warnings = [];
   for (const { note, park, depart, permit } of instructions) {
-    if (!note.additional) continue;
-    if (restriction && permit) {
+    if ((!note.additional || note.generated) && !note.field) continue;
+    if (restriction && note.additional && permit) {
       warnings.push({ note, message: '入出庫制限と、工事中も入出庫できると読める注意事項が食い違う可能性があります。' });
     }
     if ((park && requiresDeparture) || (depart && allowsParking)) {
       warnings.push({ note, message: '車両を残せるという案内と、事前出庫を求める案内が食い違う可能性があります。' });
+    }
+  }
+  return warnings;
+}
+
+export function restrictionTimingWarnings(mode, draft) {
+  if (mode !== 'long') return [];
+  const work = workSpan(mode, draft);
+  const warnings = [];
+  if (draft.restrictionMode === 'daily' && validTime(draft.dailyStartTime) && validTime(draft.dailyEndTime)) {
+    const restricted = time => validTime(time) && time >= draft.dailyStartTime && time < draft.dailyEndTime;
+    if (draft.vehicleMode === 'leave' && draft.departureNotice === 'start' &&
+        draft.startTime > draft.dailyStartTime && restricted(draft.startTime)) {
+      warnings.push({ field: 'departureNotice', message: '工事開始より前に入出庫制限が始まります。出庫期限の案内を確認してください。' });
+    }
+    const resume = resumePoint(draft, work);
+    if (draft.selectedNotices.includes('resume') && dateParts(resume.date) &&
+        resume.date >= work.startDate && resume.date <= work.endDate && restricted(resume.time)) {
+      warnings.push({ field: draft.resumeMode === 'custom' ? 'resumeTime' : 'endTime', message: '利用再開予定が毎日の入出庫制限時間内です。再開時刻または制限時間を確認してください。' });
+    }
+  }
+  if (draft.restrictionMode === 'custom' && dateParts(work.startDate) && dateParts(work.endDate)) {
+    const monthsAndDays = [...draft.customRestriction.normalize('NFKC').matchAll(/(?:(\d{4})年\s*)?(\d{1,2})月\s*(\d{1,2})日/g)];
+    const startYear = Number(work.startDate.slice(0, 4));
+    const endYear = Number(work.endDate.slice(0, 4));
+    const dates = monthsAndDays.flatMap(([, year, month, day]) =>
+      (year ? [year] : [startYear, endYear]).map(candidate =>
+        `${String(candidate).padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`)
+    ).filter(dateParts);
+    if (dates.length && endYear - startYear <= 1 && dates.every(date => date < work.startDate || date > work.endDate)) {
+      warnings.push({ field: 'customRestriction', message: '制限内容に工事期間外の日付が書かれています。工事日程と照合してください。' });
     }
   }
   return warnings;
@@ -658,7 +756,7 @@ export function wordFilename(draft) {
 
 export const maxCaseBytes = 1024 * 1024;
 const caseFormat = 'construction-notice-draft';
-const caseVersion = 1;
+const caseVersion = 2;
 
 export function exportCase(mode, draft) {
   const text = JSON.stringify({ format: caseFormat, version: caseVersion, mode, title: noticeTitle(draft), draft }, null, 2);
@@ -677,16 +775,24 @@ export function importCase(text) {
     throw new Error('JSONファイルを読み取れませんでした。');
   }
   if (!isRecord(file) || file.format !== caseFormat) throw new Error('工事案内文の案件データを選択してください。');
-  if (file.version !== caseVersion) throw new Error('このバージョンの案件データには対応していません。');
+  if (file.version !== 1 && file.version !== caseVersion) throw new Error('このバージョンの案件データには対応していません。');
   const { mode, draft } = file;
   if (!['short', 'long'].includes(mode) || !isRecord(draft)) throw new Error('案内の種類または入力内容が不正です。');
   const fields = createDraft(mode);
+  const oldCase = file.version === 1;
+  if (oldCase) {
+    for (const key of newLongFields) {
+      delete fields[key];
+      delete draft[key];
+    }
+  }
   const options = additionalOptions.map(({ id }) => id);
   const customOptions = additionalOptions.filter(({ text }) => text).map(({ id }) => id);
   const allowedValues = {
     titleMode: ['auto', 'manual'],
     vehicleMode: ['', ...Object.keys(vehicleLabels)],
-    restrictionMode: ['', ...Object.keys(restrictionCopy)],
+    restrictionMode: ['', ...(oldCase ? Object.keys(restrictionCopy) : restrictionModes(mode))],
+    departureNotice: Object.keys(departureLabels),
     restrictionColor: ['red', 'black'],
     resumeMode: ['restriction', 'custom'],
   };
